@@ -1,29 +1,39 @@
 # install.packages("psych")
 # install.packages("dlookr")
+# install.packages("ggplot2")
+# install.packages("patchwork")
+# install.packages("ggcorplot")
 
-## ==== 2. Análisis exploratorio ====
+## Cosas a decidir
 
-# 2.1 Análisis exploratorio de una variable
-# 2.1.1 Numérica
+# Categorizar la variable compliancounts, mayoria son 0
+# Parece que el NetPromoterScore no influye mucho
+# decidir como maximo cuantos missings por fila
+
+
+## ==== Análisis exploratorio ====
+
+# 1 Análisis exploratorio de una variable ! FALTA INTERPRETAR
+
+# 1.1 Numérica
 library(psych)
 psych::describe(data[, varNum])
 
-
-## 2.1.1.2 Gráficos
+##Gráficos
 ### base
 par(mfrow = c(2, 4))  
 for (var in varNum) {
-  hist(data[, var], main = paste0("Histograma variable ", var))
-  boxplot(data[, var], main = paste0("Boxplot variable ", var))
+  hist(data[, var], main = paste0("Histograma ", var))
+  boxplot(data[, var], main = paste0("Boxplot ", var))
 }
 
-### ggplot2
-install.packages("ggplot2")
-install.packages("patchwork")
+### ggplot2 
 library(ggplot2)
 library(patchwork)
-# Create a list of ggplot objects
-plots <- list()
+
+# Crear listas separadas
+plots_histo <- list()
+plots_box <- list()
 
 for (var in varNum) {
   binwidth_value <- diff(range(data[[var]])) / 30
@@ -36,21 +46,21 @@ for (var in varNum) {
     ggtitle(paste("Histograma de", var))
   
   boxp <- ggplot(data, aes(x = .data[[var]])) + 
-    geom_boxplot(outlier.colour = "red", outlier.shape = 8,
-                 outlier.size = 4) +
+    geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
     ggtitle(paste("Boxplot de", var))
   
-  plots <- append(plots, list(histo, boxp))
+  plots_histo <- append(plots_histo, list(histo))
+  plots_box <- append(plots_box, list(boxp))
 }
 
-# Use patchwork to combine plots in a 2-column layout
 dev.new()
-final_plot <- Reduce(`+`, plots) + plot_layout(ncol = 2) 
-final_plot
+final_histo <- Reduce(`+`, plots_histo) + plot_layout(ncol = 2)
+final_box <- Reduce(`+`, plots_box) + plot_layout(ncol = 2)
+final_histo
+final_box
 
-
-# 2.1.2 Categórica
-## 2.1.2.1 Descriptivo
+# 1.2 Categórica
+## Descriptivo
 for (var in varCat) {
   tablaAbs <- data.frame(table(data[, var]))
   tablaFreq <- data.frame(table(data[, var])/sum(table(data[, var])))
@@ -63,16 +73,15 @@ for (var in varCat) {
   cat("==================================================\n")
 }
 
-## 2.1.2.2 Gráficos
+## Gráficos
 ### base
 par(mfrow = c(2, 3))  
 for (var in varCat) {
-  barplot(table(data[, var]))
+  barplot(table(data[, var]),main = var)
 }
 par(mfrow = c(1, 1))  
 
 ### ggplot2
-library(ggplot2)
 library(gridExtra)
 
 plots <- list()  # lista vacía
@@ -91,8 +100,95 @@ for (var in varCat) {
   plots[[i]] <- p
   i <- i + 1
 }
-
 # Mostrar todos los gráficos en un grid (ejemplo con 2 columnas)
+dev.new()
 grid.arrange(grobs = plots, ncol = 2)
 
+# 2 Análisis exploratorio de una bivariante ! NO ESTA ACABADO I FALTA INTERPRETAR
+
+## Num VS Nun
+
+cor(data[, varNum],use = "pairwise.complete.obs")
+corPlot(data[, varNum])
+
+# Correlacion negativa entre ComplaintsCount i NetPromoterScore -0.69
+# Correlación negativa entre Balance i NumOfProducts de -0.31
+# El resto tienen un valor muy bajo en valor absoluto.
+
+## Cat VS Cat
+
+for (varc1 in varCat) {
+  for (varc2 in varCat) {
+    if (varc1 != varc2) {
+      prop_table <- prop.table(table(data[, varc1], data[, varc2]))
+      cat("=============", varc1, " vs. ", varc2, "=========================\n")
+      print(prop_table)
+    }
+  }
+}
+
+par(mfrow = c(3, 3))  
+for (varc1 in varCat) {
+  for (varc2 in varCat) {
+    if (varc1 != varc2) {
+      prop_table <- prop.table(table(data[, varc1], data[, varc2]))
+      barplot(prop_table, beside = TRUE,main = paste0(varc1,"&",varc2))
+    }
+  }
+}
+
+
+## Num VS Cat
+
+ggplot(data, aes(x = factor(Exited), y = NetPromoterScore, fill = factor(Exited))) +
+  geom_boxplot(alpha = 0.7) +
+  labs(x = "Exited", 
+       y = "Net Promoter Score",
+       title = "Distribución de NetPromoterScore por estado de salida (Exited)") +
+  scale_fill_manual(values = c("#66CC99", "#FF6666"), 
+                    name = "Exited", 
+                    labels = c("No", "Sí")) +
+  theme_minimal()
+
+#violinplot
+ggplot(data, aes(x = factor(Exited), y = NetPromoterScore, fill = factor(Exited))) +
+  geom_violin(trim = FALSE, alpha = 0.7) +
+  geom_boxplot(width = 0.1, fill = "white") +
+  labs(x = "Exited", 
+       y = "Net Promoter Score",
+       title = "Distribución (violin plot) de NetPromoterScore por Exited") +
+  scale_fill_manual(values = c("#66CC99", "#FF6666"), 
+                    name = "Exited", 
+                    labels = c("No", "Sí")) +
+  theme_minimal()
+
+#intento para todas las numericas con exited
+
+for (var in varNum) {
+  # Crear gráfico filtrando NA sobre la marcha
+  p <- ggplot(data, aes(x = factor(Exited), y = .data[[var]], fill = factor(Exited))) +
+    geom_boxplot(alpha = 0.7, outlier.shape = NA, na.rm = TRUE) +
+    labs(x = "Exited", 
+         y = var,
+         title = paste("Distribución de", var, "por estado de salida (Exited)")) +
+    scale_fill_manual(values = c("#66CC99", "#FF6666"), 
+                      name = "Exited", 
+                      labels = c("No", "Sí")) +
+    theme_minimal()
+  
+  print(p)
+}
+
+
+# Missings
+
+# Se sabe que los missings són aleatorios
+
+library(visdat)
+
+vis_miss(data)
+
+na_por_fila <- rowSums(is.na(data))
+filas_15_miss <- which(na_por_fila >= 15)
+data[filas_15_miss, ]
 
