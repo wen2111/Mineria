@@ -1,0 +1,63 @@
+---
+title: "preprocessing univ"
+output: html_document
+date: "2025-10-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Detección de outliers univariante: variables numéricas
+Ejecutar reading_data.R antes
+```{r}
+install.packages("lawstat")
+library(lawstat)
+library(ggplot2)
+
+```
+Variables a estudiar:
+```{r}
+varNum<-c("Age", "CreditScore", "Tenure","EstimatedSalary", "Balance", "NumOfProducts",
+          "TransactionFrequency","AvgTransactionAmount","DigitalEngagementScore",
+          "ComplaintsCount","NetPromoterScore")
+```
+
+Primero ejecutamos un test de simetría para saber qué método usar para la detección de outliers en cada variable.
+```{r}
+p<-sapply(varNum, function(v) symmetry.test(data[[v]])$p.value)
+symmetry_test <- data.frame(
+  p.value = p,
+  significative=(p<0.05)
+)
+symmetry_test <- symmetry_test[order(symmetry_test$p.value), ]
+print(symmetry_test)
+```
+
+Se observa un grupo de variables claramente no simétricas.
+```{r}
+non_symmetric<-rownames(symmetry_test[symmetry_test$significative,])
+```
+
+Las variables EstimatedSalary y Ternure parecen claramente simétricas
+```{r}
+symmetryc<-c("EstimatedSalary","Ternure")
+```
+CreditScore y TransactionFrequency tienen un p-valor más bajo, haremos una inspección visual de su distribución:
+```{r}
+ggplot(data, aes(x = CreditScore)) +
+  geom_histogram(bins = 30, fill = "blue", alpha = 0.7) +
+  geom_density(aes(y = after_stat(count))) +
+  ggtitle("Distribución de CreditScore - p = 0.110")
+```
+
+Dado que la asimetría no es estadísticamente significativa y el análisis visual denota cierta simetría, la consideraremos simétrica.
+
+Ahora evaluamos TransactionFrequency:
+```{r}
+ggplot(data, aes(x = TransactionFrequency)) +
+  geom_histogram(bins = 30, fill = "blue", alpha = 0.7) +
+  geom_density(aes(y = after_stat(count))) +
+  ggtitle("Distribución de TransactionFrequency - p = 0.248")
+```
+
+En esta ocasión con un p-valor más alto y el análisis visual de su distribución, aceptamos simetría.
