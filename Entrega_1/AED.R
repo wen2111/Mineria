@@ -188,10 +188,17 @@ for (var in varNum) {
 library(visdat)
 
 vis_miss(data)
-# hay un 20% de missings en cada variable
+# hay un 30% de missings en cada variable
 #el id con un 21%, debido que en el test no exite missings.
 
 na_por_fila <- rowSums(is.na(data))
 filas_15_miss <- which(na_por_fila >= 11)
 s<-data[filas_15_miss,]
 sum(s$group=="test") # hay 212 individuos con 11 o mas missings
+
+
+## Aleatoriedad de los missings
+install.packages("naniar")
+library(naniar)
+naniar::mcar_test(data)
+# p-valor = 0.387 > 0.05, por lo que no se rechaza H0: los missings son aleatorios (MCAR)
