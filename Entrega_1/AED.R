@@ -116,7 +116,7 @@ cor(data[, varNum],use = "pairwise.complete.obs")
 corPlot(data[, varNum])
 
 # Correlacion negativa entre ComplaintsCount i NetPromoterScore -0.69
-# Correlación negativa entre Balance i NumOfProducts de -0.31
+# Correlación negativa entre Balance i NumOfProducts de -0.31.
 # El resto tienen un valor muy bajo en valor absoluto.
 
 ## Cat VS Cat
@@ -141,6 +141,20 @@ for (varc1 in varCat) {
   }
 }
 
+# no s'observa res rellevant. Masses combiinacions.
+
+# relacion entre exited i las categoricas
+v<-"Exited"
+for (varc1 in varCat) {
+    if (varc1 != v) {
+      prop_table <- prop.table(table(data[, v], data[, varc1]),margin = 2)
+      barplot(prop_table, beside = TRUE,main = paste0(v,"&",varc1))
+    }
+}
+
+# Els d'origen alemany tenen 1/3 de prob de marxar.
+# Les dones amb mes prob.
+# Els menbres no actius tenen una prob més elevada.
 
 ## Num VS Cat
 
@@ -148,7 +162,7 @@ ggplot(data, aes(x = factor(Exited), y = NetPromoterScore, fill = factor(Exited)
   geom_boxplot(alpha = 0.7) +
   labs(x = "Exited", 
        y = "Net Promoter Score",
-       title = "Distribución de NetPromoterScore por estado de salida (Exited)") +
+       title = "Distribución de NetPromoterScore por Exited") +
   scale_fill_manual(values = c("#66CC99", "#FF6666"), 
                     name = "Exited", 
                     labels = c("No", "Sí")) +
@@ -166,10 +180,9 @@ ggplot(data, aes(x = factor(Exited), y = NetPromoterScore, fill = factor(Exited)
                     labels = c("No", "Sí")) +
   theme_minimal()
 
-#intento para todas las numericas con exited
+# todas las numericas con exited
 
 for (var in varNum) {
-  # Crear gráfico filtrando NA sobre la marcha
   p <- ggplot(data, aes(x = factor(Exited), y = .data[[var]], fill = factor(Exited))) +
     geom_boxplot(alpha = 0.7, outlier.shape = NA, na.rm = TRUE) +
     labs(x = "Exited", 
