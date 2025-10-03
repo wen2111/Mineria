@@ -6,10 +6,8 @@
 
 ## Cosas a decidir
 
-# Categorizar la variable compliancounts, mayoria son 0
-# Parece que el NetPromoterScore no influye mucho
+# Categorizar la variable compliancounts, mayoria son 0 i num of products
 # decidir como maximo cuantos missings por fila
-
 
 ## ==== Análisis exploratorio ====
 
@@ -18,6 +16,10 @@
 # 1.1 Numérica
 library(psych)
 psych::describe(data[, varNum])
+
+# Balance: Hay muchos 0 (cuentas inactivas)
+# ComplaintsCount: la mayoría tiene 0 reclamos, y unos pocos con muchos reclamos, kurtosis 7,51.>3 Agrupar en rango.
+# AvgTransactionAmount: la mayoría gasta poco, pero debido algunos tienen importes altos, kurtosis 4,61>3. para no perder información, en vez de agrupar hacemos log()? 
 
 ##Gráficos
 ### base
@@ -72,6 +74,8 @@ for (var in varCat) {
   print(tablaAbs)
   cat("==================================================\n")
 }
+
+# 21% abandonó el banco, dataset desbalanceado ----> ajustar pesos!!
 
 ## Gráficos
 ### base
@@ -170,7 +174,7 @@ for (var in varNum) {
     geom_boxplot(alpha = 0.7, outlier.shape = NA, na.rm = TRUE) +
     labs(x = "Exited", 
          y = var,
-         title = paste("Distribución de", var, "por estado de salida (Exited)")) +
+         title = paste("Distribución de", var, "por Exited")) +
     scale_fill_manual(values = c("#66CC99", "#FF6666"), 
                       name = "Exited", 
                       labels = c("No", "Sí")) +
@@ -180,10 +184,45 @@ for (var in varNum) {
 }
 
 
+# Variable numérica balance i las categroicas
+numVar <- "Balance"
+for (var in varCat) {
+  p <- ggplot(data, aes(x = .data[[var]], y = .data[[numVar]], fill = .data[[var]])) +
+    geom_boxplot(alpha = 0.7, outlier.shape = NA, na.rm = TRUE) +
+    labs(x = var,
+         y = numVar,
+         title = paste("Distribución de", numVar, "por", var)) +
+    theme_minimal() +
+    theme(legend.position = "none")  # opcional: quitar leyenda
+  
+  print(p)
+}
+# LO MISMO PERO quitar el boxplot de NA
+for (var in varCat) {
+  # Filtrar filas donde la categoría o balance no sean NA
+  data_filtrada <- data[!is.na(data[[var]]) & !is.na(data[[numVar]]), ]
+  
+  p <- ggplot(data_filtrada, aes(x = .data[[var]], y = .data[[numVar]], fill = .data[[var]])) +
+    geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+    labs(x = var,
+         y = numVar,
+         title = paste("Distribución de", numVar, "por", var)) +
+    theme_minimal() +
+    theme(legend.position = "none")  # opcional: quitar leyenda
+  
+  print(p)
+}
+
+# Aplicar tapply a todas las variables categóricas de varCat para media
+resultados <- lapply(varCat, function(var) {
+  tapply(data[[numVar]], data[[var]], mean, na.rm = TRUE)
+})
+names(resultados) <- varCat
+resultados
+
 # Missings
 
 # Se sabe que los missings són aleatorios por los profes
-## hacer test de aleatoriedad???
 
 library(visdat)
 
