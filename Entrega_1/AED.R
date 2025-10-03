@@ -6,8 +6,9 @@
 
 ## Cosas a decidir
 
-# Categorizar la variable compliancounts, mayoria son 0 i num of products
+# Categorizar la variable complaincounts, mayoria son 0 i num of products
 # decidir como maximo cuantos missings por fila
+# cargar las variables no signicativas para la varible respuesta.
 
 ## ==== Análisis exploratorio ====
 
@@ -110,7 +111,7 @@ grid.arrange(grobs = plots, ncol = 2)
 
 # 2 Análisis exploratorio de una bivariante ! NO ESTA ACABADO I FALTA INTERPRETAR
 
-## Num VS Nun
+## Num VS Num
 
 cor(data[, varNum],use = "pairwise.complete.obs")
 corPlot(data[, varNum])
@@ -121,70 +122,70 @@ corPlot(data[, varNum])
 
 ## Cat VS Cat
 
+# taules fetes amb el 100% per columna. És a dir, del grup 1, A+B+C sumen 100, del grup 2 A+B+C=100%.
+
 for (varc1 in varCat) {
   for (varc2 in varCat) {
     if (varc1 != varc2) {
-      prop_table <- prop.table(table(data[, varc1], data[, varc2]))
+      prop_table <- prop.table(table(data[, varc1], data[, varc2]),margin = 2)
       cat("=============", varc1, " vs. ", varc2, "=========================\n")
       print(prop_table)
     }
   }
 }
 
-par(mfrow = c(3, 3))  
+par(mfrow = c(2, 2))  
 for (varc1 in varCat) {
   for (varc2 in varCat) {
     if (varc1 != varc2) {
-      prop_table <- prop.table(table(data[, varc1], data[, varc2]))
+      prop_table <- prop.table(table(data[, varc1], data[, varc2]),margin =2 )
       barplot(prop_table, beside = TRUE,main = paste0(varc1,"&",varc2))
     }
   }
 }
 
-# no s'observa res rellevant. Masses combiinacions.
+# Desbalanceig entre les combinacions de MaritalStatus, 
+# LoanSatatus,Education level, SavingAccount i CustumerSegem.
+# no s'observa res rellevant. Masses combinacions.
+# Considero que no es tan important estudiar les relaciones entre les varibales.
 
-# relacion entre exited i las categoricas
+# relacion entre exited ( var resposta) i las categoricas
+cat<-varCat[-10]
 v<-"Exited"
-for (varc1 in varCat) {
+for (varc1 in cat) {
     if (varc1 != v) {
       prop_table <- prop.table(table(data[, v], data[, varc1]),margin = 2)
+      print(prop_table)
       barplot(prop_table, beside = TRUE,main = paste0(v,"&",varc1))
     }
 }
 
+for (varc1 in cat) {
+  if (varc1 != v) {
+    tab <- table(data[[v]], data[[varc1]])  # filas = Exited, columnas = categorías
+    test <- chisq.test(tab, correct = FALSE)
+    
+    cat("\nVariable:", varc1, "\n")
+    cat("Chi-squared =", round(test$statistic, 3),
+        "df =", test$parameter,
+        "p-value =", signif(test$p.value, 5), "\n")
+    
+    if (test$p.value < 0.05) cat("-> Diferencias significativas entre columnas\n")
+  }
+}
+
+# demostrat pel test.
 # Els d'origen alemany tenen 1/3 de prob de marxar.
 # Les dones amb mes prob.
-# Els menbres no actius tenen una prob més elevada.
+# Els membres no actius tenen una prob més elevada.
 
 ## Num VS Cat
 
-ggplot(data, aes(x = factor(Exited), y = NetPromoterScore, fill = factor(Exited))) +
-  geom_boxplot(alpha = 0.7) +
-  labs(x = "Exited", 
-       y = "Net Promoter Score",
-       title = "Distribución de NetPromoterScore por Exited") +
-  scale_fill_manual(values = c("#66CC99", "#FF6666"), 
-                    name = "Exited", 
-                    labels = c("No", "Sí")) +
-  theme_minimal()
-
-#violinplot
-ggplot(data, aes(x = factor(Exited), y = NetPromoterScore, fill = factor(Exited))) +
-  geom_violin(trim = FALSE, alpha = 0.7) +
-  geom_boxplot(width = 0.1, fill = "white") +
-  labs(x = "Exited", 
-       y = "Net Promoter Score",
-       title = "Distribución (violin plot) de NetPromoterScore por Exited") +
-  scale_fill_manual(values = c("#66CC99", "#FF6666"), 
-                    name = "Exited", 
-                    labels = c("No", "Sí")) +
-  theme_minimal()
-
-# todas las numericas con exited
+# todas las numericas con exited ( var resposta)
 
 for (var in varNum) {
   p <- ggplot(data, aes(x = factor(Exited), y = .data[[var]], fill = factor(Exited))) +
-    geom_boxplot(alpha = 0.7, outlier.shape = NA, na.rm = TRUE) +
+    geom_boxplot(alpha = 0.7, na.rm = TRUE) +
     labs(x = "Exited", 
          y = var,
          title = paste("Distribución de", var, "por Exited")) +
@@ -196,42 +197,58 @@ for (var in varNum) {
   print(p)
 }
 
+# test de medias.
 
-# Variable numérica balance i las categroicas
-numVar <- "Balance"
-for (var in varCat) {
-  p <- ggplot(data, aes(x = .data[[var]], y = .data[[numVar]], fill = .data[[var]])) +
-    geom_boxplot(alpha = 0.7, outlier.shape = NA, na.rm = TRUE) +
-    labs(x = var,
-         y = numVar,
-         title = paste("Distribución de", numVar, "por", var)) +
-    theme_minimal() +
-    theme(legend.position = "none")  # opcional: quitar leyenda
+resultados <- data.frame(
+  Variable = character(),
+  Media_Exited0 = numeric(),
+  Media_Exited1 = numeric(),
+  p_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (var in varNum) {
+  medias <- tapply(data[[var]], data$Exited, mean, na.rm = TRUE)
+  p_val <- t.test(data[[var]] ~ data$Exited)$p.value
   
-  print(p)
-}
-# LO MISMO PERO quitar el boxplot de NA
-for (var in varCat) {
-  # Filtrar filas donde la categoría o balance no sean NA
-  data_filtrada <- data[!is.na(data[[var]]) & !is.na(data[[numVar]]), ]
-  
-  p <- ggplot(data_filtrada, aes(x = .data[[var]], y = .data[[numVar]], fill = .data[[var]])) +
-    geom_boxplot(alpha = 0.7, outlier.shape = NA) +
-    labs(x = var,
-         y = numVar,
-         title = paste("Distribución de", numVar, "por", var)) +
-    theme_minimal() +
-    theme(legend.position = "none")  # opcional: quitar leyenda
-  
-  print(p)
+  resultados <- rbind(resultados, data.frame(
+    Variable = var,
+    Media_Exited0 = medias["0"],
+    Media_Exited1 = medias["1"],
+    p_value = p_val
+  ))
 }
 
-# Aplicar tapply a todas las variables categóricas de varCat para media
-resultados <- lapply(varCat, function(var) {
-  tapply(data[[numVar]], data[[var]], mean, na.rm = TRUE)
-})
-names(resultados) <- varCat
 resultados
+
+# Misma dsitribución tanto para los que marchan como los que no.
+# Salvo la variable age,creditscore,num of products, Balance,Estimated salary.
+
+# test de medianas
+
+resultados_mediana <- data.frame(
+  Variable = character(),
+  Mediana_Exited0 = numeric(),
+  Mediana_Exited1 = numeric(),
+  p_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (var in varNum) {
+  medianas <- tapply(data[[var]], data$Exited, median, na.rm = TRUE)
+  p_val <- wilcox.test(data[[var]] ~ data$Exited)$p.value
+  
+  resultados_mediana <- rbind(resultados_mediana, data.frame(
+    Variable = var,
+    Mediana_Exited0 = medianas["0"],
+    Mediana_Exited1 = medianas["1"],
+    p_value = p_val
+  ))
+}
+
+resultados_mediana
+
+# mismos resultados que antes.
 
 # Missings
 
