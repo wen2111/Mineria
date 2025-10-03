@@ -8,11 +8,11 @@
 
 # Categorizar la variable complaincounts, mayoria son 0 i num of products
 # decidir como maximo cuantos missings por fila
-# cargar las variables no signicativas para la varible respuesta.
+# cargar las variables no signicativas para la variable respuesta.
 
 ## ==== Análisis exploratorio ====
 
-# 1 Análisis exploratorio de una variable ! FALTA INTERPRETAR
+# 1 Análisis exploratorio de una variable 
 
 # 1.1 Numérica
 library(psych)
@@ -109,7 +109,7 @@ for (var in varCat) {
 dev.new()
 grid.arrange(grobs = plots, ncol = 2)
 
-# 2 Análisis exploratorio de una bivariante ! NO ESTA ACABADO I FALTA INTERPRETAR
+# 2 Análisis exploratorio de una bivariante 
 
 ## Num VS Num
 
