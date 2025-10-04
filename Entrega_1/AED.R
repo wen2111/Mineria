@@ -9,6 +9,9 @@
 # Categorizar la variable complaincounts, mayoria son 0 i num of products
 # decidir como maximo cuantos missings por fila
 # cargar las variables no signicativas para la variable respuesta.
+# agrupar en rangos ComplaintsCount
+# Añadir variable dummy para Balance (con muchos 0)
+# Ajustar peso de variable respuesta
 
 ## ==== Análisis exploratorio ====
 
@@ -20,7 +23,7 @@ psych::describe(data[, varNum])
 
 # Balance: Hay muchos 0 (cuentas inactivas)
 # ComplaintsCount: la mayoría tiene 0 reclamos, y unos pocos con muchos reclamos, kurtosis 7,51.>3 Agrupar en rango.
-# AvgTransactionAmount: la mayoría gasta poco, pero debido algunos tienen importes altos, kurtosis 4,61>3. para no perder información, en vez de agrupar hacemos log()? 
+# AvgTransactionAmount: la mayoría gasta poco, algunos tienen importes
 
 ##Gráficos
 ### base
@@ -76,7 +79,6 @@ for (var in varCat) {
   cat("==================================================\n")
 }
 
-# 21% abandonó el banco, dataset desbalanceado ----> ajustar pesos!!
 
 ## Gráficos
 ### base
@@ -108,6 +110,11 @@ for (var in varCat) {
 # Mostrar todos los gráficos en un grid (ejemplo con 2 columnas)
 dev.new()
 grid.arrange(grobs = plots, ncol = 2)
+
+# La variable respuesta Exited: 21% abandonó el banco, dataset desbalanceado
+# La mayoría son alemanes, con educación universitaria, sin productos de ahorro ni inversión.
+
+
 
 # 2 Análisis exploratorio de una bivariante 
 
@@ -149,7 +156,7 @@ for (varc1 in varCat) {
 # no s'observa res rellevant. Masses combinacions.
 # Considero que no es tan important estudiar les relaciones entre les varibales.
 
-# relacion entre exited ( var resposta) i las categoricas
+# relacion entre exited (var resposta) i las categoricas
 cat<-varCat[-10]
 v<-"Exited"
 for (varc1 in cat) {
@@ -257,6 +264,7 @@ resultados_mediana
 library(visdat)
 
 vis_miss(data)
+
 # hay un 30% de missings en cada variable
 #el id con un 21%, debido que en el test no exite missings.
 
