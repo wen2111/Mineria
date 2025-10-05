@@ -1,0 +1,59 @@
+---
+title: "Metadata"
+author: "Grupo 5"
+date: "2025-10-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+metadata <- data.frame(
+  Variable = c("Tenure", "Gender", "Education level", "LoanStatus", "NetPromoterScore",
+               "TransactionFrequency", "Surname", "Age", "Geography", "ComplaintCount",
+               "HasCrCard", "EsimatedSalary", "IsActiveMember", "AvgTransactionAmount",
+               "CustomerSegment", "MaritalStatus", "DigitalEngagementScore", "ID",
+               "CreditScore", "SavingAccountFlag", "Balance", "NumOfProducts", "Exited"),
+  TipoVariable = c("Numérica contínua", "Categórica binaria", "Categórica ordinal", "Categórica politómica", "Numérica discreta",
+                   "Numérica discreta", "Categórica nominal", "Numérica discreta", "Categórica politómica", "Numérica discreta",
+                   "Categórica binaria", "Numérica contínua", "Categórica binaria", "Numérica contínua",
+                   "Categórica politómica", "Categórica politómica", "Numérica discreta", "Categórica nominal",
+                   "Numérica discreta", "Categórica binaria", "Numérica contínua", "Numérica discreta", "Categórica binaria"),
+  Cambio = rep("", 23),
+  TipoDato = c("integer", "character", "character", "character", "integer",
+               "integer", "character", "integer", "character", "integer",
+               "integer", "double", "integer", "double",
+               "character", "character", "integer", "integer",
+               "integer", "integer", "double", "integer", "integer"),
+  BusinessCategory = c("Historial bancario", "Identificadores demográficos", "Identificadores demográficos", "Identificadores demográficos", "Ingresos y segmentación",
+                       "Comportamiento digital y de uso", "Identificadores demográficos", "Identificadores demográficos", "Identificadores demográficos", "Comportamiento digital y de uso",
+                       "Historial bancario", "Ingresos y segmentación", "Comportamiento digital y de uso", "Comportamiento digital y de uso",
+                       "Ingresos y segmentación", "Identificadores demográficos", "Comportamiento digital y de uso", "Identificadores demográficos",
+                       "Historial bancario", "Historial bancario", "Historial bancario", "Historial bancario", "Variable objetivo"),
+  Descripcion = c("Años como cliente", "", "High School, University, Postgraduate, Other", "Estado de préstamos: No loan, Active loan, Default risk", "Escala de satisfacción del cliente: 0-10",
+                  "Número de transacciones mensuales", "", "", "País de residencia", "Número de reclamos en el último año",
+                  "0=No / 1=Sí", "Ingreso anual estimado", "0=No / 1=Sí", "Monto promedio de transacciones",
+                  "Mass Market, Affluent, High Net Worth", "Single, Married, Divorced, Widowed", "0-100", "",
+                  "300-579: muy bajo/riesgo alto, 580-669: bajo/riesgo moderado, 670-739: medio/riesgo aceptable, 740-799: alto/riesgobajo, 800-850: muy alto/riesgo mínimo",
+                  "0=No / 1=Sí", "", "Número de productos contratados", "0=No abandonó / 1=Abandonó"),
+  stringsAsFactors = FALSE
+)
+
+metadata
+```
+
+
+```{r metadata, echo=FALSE}
+library(knitr)
+kable(metadata, caption = "Diccionario de datos del dataset")
+```
+
+```{r}
+library(kableExtra)
+
+kable(metadata, caption = "Diccionario de datos del dataset") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
