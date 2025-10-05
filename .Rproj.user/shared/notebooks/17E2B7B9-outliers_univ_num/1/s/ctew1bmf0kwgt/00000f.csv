@@ -1,0 +1,4 @@
+"0","p<-sapply(varNum, function(v) symmetry.test(data[[v]])$p.value)"
+"2","Warning: argument is not numeric or logical: returning NA"
+"2","Error in sort(x) - mean(x) : argumento no-numérico para operador binario
+"
