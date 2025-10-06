@@ -10,10 +10,11 @@ knitr::opts_chunk$set(echo = TRUE)
 # Detección de outliers univariante: variables numéricas
 Ejecutar reading_data.R antes
 ```{r}
-install.packages("lawstat")
 library(lawstat)
 library(ggplot2)
 library(moments)
+library(EnvStats)
+
 ```
 Variables a estudiar:
 ```{r}
@@ -55,6 +56,8 @@ for (var in varNum) {
 
 par(mfrow = c(1, 1))
 ```
+NumOfProducts y ComplaintsCount son conteos (variables discretas), por lo que no tiene mucho sentido aplicar métodos basados en cálculos numéricos
+
 Pese a que TransactionFrequency, Tenure y EstimatedSalary pueden ser validadas como simétricas, CreditScore es algo confusa. Realizaremos un último test:
 ```{r}
 skewness(data$CreditScore, na.rm = TRUE)
@@ -66,8 +69,125 @@ No obstante, ha aparecido una duda. La distribución de Balance parece mostrar l
 sum(data$Balance == 0, na.rm = TRUE)
 ```
 ```{r}
-symmetric<-c("TransactionFrequency", "Tenure", "EstimatedSalary")
-non_symmetric<-c("Age","NumOfProducts","AvgTransactionAmount","DigitalEngagementScore","ComplaintsCount", "NetPromoterScore")
-
+symmetric<-c("TransactionFrequency", "Tenure", "EstimatedSalary", "CreditScore")
+non_symmetric<-c("Age","AvgTransactionAmount","DigitalEngagementScore", "NetPromoterScore")
+varNum
 ```
 
+Procedemos a la detección de outliers para las variables simétricas. Para ello utilizaremos el rango intercuartílico (IQR), de modo que los valores que queden fuera de dicho intervalo serán reconocidos como outliers univariantes
+```{r}
+outlier_positions <- list()
+IQROutlier <- function(variable, rmnas = TRUE) {
+  IQ <- IQR(variable, na.rm = rmnas)
+  intInf <- quantile(variable, probs = c(0.25, 0.75),na.rm = rmnas)[[1]] - 1.5*IQ
+  intSup <- quantile(variable, probs = c(0.25, 0.75),na.rm = rmnas)[[2]] + 1.5*IQ
+  posicions <- which(variable >= intSup | variable <= intInf)
+  if (length(posicions) > 0) {
+    cat("Existeixen outliers en les posicions:", paste0(posicions, collapse = ", "))
+  } else {
+    cat("No existeixen outliers")
+  }
+  return(posicions)
+}
+for (var in symmetric) {
+  cat("\nVariable:", var, "\n")
+  pos <- IQROutlier(data[[var]])
+  if (length(pos) > 0) {
+    outlier_positions[[var]] <- pos
+  }
+}
+
+outlier_positions
+longitudes_s <- sapply(outlier_positions, length)
+longitudes_s
+```
+Las variables EstimatedSalary y Tenure no tienen outliers. 
+
+TransactionFrequency y CreditScore tienen una proporcion muy baja de outliers, pero puede tener sentido dado que son distribuciones muy compactas:
+```{r}
+par(mfrow = c(1, 2))
+boxplot(data$TransactionFrequency, main = "TransactionFrequency")
+boxplot(data$CreditScore, main = "CreditScore")
+```
+
+
+Ahora, para las variables no simétricas, utilizaremos el método del Hampel Identifier. Este método usa la mediana y MAD (Median Absolute Deviation) por ser estadísticos robustos que no se ven afectados por la asimetría de los datos. A diferencia de la media y desviación estándar, no asumen distribución normal y son resistentes a valores extremos. Esto permite detectar outliers reales sin que la forma sesgada de la distribución afecte los límites de detección.
+
+Para el parámetro que determina cuan estricto es nuestro filtro hemos escogido el umbral 3.5 tras comprobar que con 3 detectábamos demasiados outliers (6-8%), perdiendo datos válidos, mientras que con 4 nos quedábamos cortos, arriesgándonos no identificar outliers reales. El valor 3.5 nos proporciona una proporción sensata, manteniendo alrededor del 4% de outliers.
+```{r}
+hampelOutlier <- function(variable, mad_constant = 1, threshold = 3.5) {
+  med <- median(variable, na.rm = TRUE)
+  mad_val <- mad(variable, constant = mad_constant, na.rm = TRUE)
+  
+  lower_bound <- med - threshold * mad_val
+  upper_bound <- med + threshold * mad_val
+  
+  which((variable < lower_bound) | (variable > upper_bound))
+}
+
+outlier_positions_non_symmetric <- list()
+
+for (var in non_symmetric) {
+  outliers <- hampelOutlier(data[[var]])
+  if (length(outliers) > 0) {
+    outlier_positions_non_symmetric[[var]] <- outliers
+  }
+}
+
+outlier_positions_non_symmetric
+longitudes_ns <- sapply(outlier_positions_non_symmetric, length)
+longitudes_ns
+```
+Vemos que, con los valores de los parámetros escogidos, obtenemos una proporción de cerca de un 4% de outliers, exepto para DigitalEngagementScore, que parece una distribución más densa.
+
+Ahora haremos una comparación de las proporciones segun el grupo (train o test) para evaluar si hay alguna anomalía.
+```{r}
+prop_test <- 30
+prop_train <- 70
+todas_outliers<-c(outlier_positions, outlier_positions_non_symmetric)
+proporcion_outliers_completa <- data.frame(
+  Variable = character(),
+  Grupo = character(),
+  N_Outliers = integer(),
+  Total_Outliers = integer(),
+  Proporcion_Outliers = numeric(),
+  Proporcion_Esperada = numeric(),
+  Diferencia = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (var in names(todas_outliers)) {
+  outliers <- todas_outliers[[var]]
+  total_outliers_var <- length(outliers)
+  
+  if (total_outliers_var > 0) {
+    outliers_test <- sum(data$group[outliers] == "test")
+    outliers_train <- sum(data$group[outliers] == "train")
+    
+    proporcion_outliers_completa <- rbind(proporcion_outliers_completa,
+      data.frame(
+        Variable = var,
+        Grupo = "test",
+        N_Outliers = outliers_test,
+        Total_Outliers = total_outliers_var,
+        Proporcion_Outliers = round(outliers_test / total_outliers_var * 100, 1),
+        Proporcion_Esperada = round(prop_test, 1),
+        Diferencia = round((outliers_test / total_outliers_var * 100) - prop_test, 1)
+      ),
+      data.frame(
+        Variable = var,
+        Grupo = "train", 
+        N_Outliers = outliers_train,
+        Total_Outliers = total_outliers_var,
+        Proporcion_Outliers = round(outliers_train / total_outliers_var * 100, 1),
+        Proporcion_Esperada = round(prop_train, 1),
+        Diferencia = round((outliers_train / total_outliers_var * 100) - prop_train, 1)
+      )
+    )
+  }
+}
+
+# Mostrar resultados
+proporcion_outliers_completa
+```
+Vemos que las proporciones tienen bastante sentido si las miramos segun el grupo train/test.
