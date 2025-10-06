@@ -70,6 +70,10 @@ cutoff <- qchisq(p = 0.99, df = ncol(dades2))
 dades2[distancia_mahalanobis>cutoff, ]
 ```
 
+En el extracto mostrado se observan varios valores que podrían considerarse atípicos en relación con el resto de los datos. 
+
+Como podria ser el caso de la edad de 84 años, resulta inusualmente alta dentro de una población bancaria típica, mientras que saldos muy elevados como los de 134,096.53 o 120,656.86 contrastan con otros clientes que incluso mantienen un balance de 0. Asimismo, la frecuencia y monto promedio de transacciones varían de manera considerable entre clientes, lo que sugiere la presencia de comportamientos extremos en el uso de productos financieros. 
+
 De todas estas variables vamos a ordenarlo de manera descendiente 
 
 ```{r}
@@ -78,9 +82,13 @@ par(mfrow=c(1,1))
 hist(distancia_mahalanobis)
 ```
 
+El histograma de la distancia de Mahalanobis muestra que la mayoría de las observaciones tienen valores bajos (entre 5 y 15), mientras que unas pocas presentan distancias mucho más altas (superiores a 25), lo que indica la presencia de posibles outliers multivariantes en el conjunto de datos.
+
 Per estudiar la relación entre variables hacemos un scatterplot 3D de los outliers multivariantes. 
 
 Elegimos las variables: Age, Balance, EstimatedSalary
+
+El gráfico 3D muestra la relación entre edad, balance y salario estimado, donde los puntos negros representan los valores normales y los rojos indican outliers detectados mediante la distancia de Mahalanobis; estas anomalías corresponden a individuos con combinaciones atípicas de variables que se alejan del patrón general de la muestra.
 
 ```{r}
 library(scatterplot3d)
@@ -154,3 +162,6 @@ plot3d(dades_sel[,1], dades_sel[,2], dades_sel[,3],
        xlab = "Age", ylab = "Balance", zlab = "EstimatedSalary")
 
 ```
+Se detectan clientes con comportamientos inusuales, como alguien muy joven con balance muy alto, personas con salarios estimados extremadamente diferentes al resto, o combinaciones de características que no siguen el patrón típico de la mayoría de observaciones.
+
+
