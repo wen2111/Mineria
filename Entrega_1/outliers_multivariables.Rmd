@@ -1,0 +1,156 @@
+---
+title: "outliers multi"
+author: "Laura Belmonte"
+date: "2025-10-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,echo=FALSE}
+train_data<-read.csv2("train.csv", sep=",")
+test_data<-read.csv2("test.csv", sep=",")
+#submit_data<-read.csv2("sample_submission.csv", sep=",")
+train_data$group<-"train"
+test_data$group<-"test"
+train_data<-train_data[,-1]
+test_data$Exited<-NA
+common_columns <- intersect(names(train_data), names(test_data))
+#common_columns
+train_data <- train_data[,common_columns]
+test_data <- test_data[,  common_columns]
+data<-rbind(train_data,test_data)
+data <- data[, c("Exited", setdiff(names(data), "Exited"))]
+varCat<-c("Geography", "Gender", "MaritalStatus", "EducationLevel","HasCrCard", 
+          "SavingsAccountFlag", "LoanStatus","CustomerSegment","Exited","group" ,"IsActiveMember")
+varNum<-c("Age", "CreditScore", "Tenure","EstimatedSalary", "Balance", "NumOfProducts",
+          "TransactionFrequency","AvgTransactionAmount","DigitalEngagementScore",
+          "ComplaintsCount","NetPromoterScore")
+data[varCat] <- lapply(data[varCat], factor)
+data[varNum] <- lapply(data[varNum], as.numeric)
+#str(data)
+```
+
+Hasta ahora hemos visto cada variable por separado mediante diferentes metodos para detectar sus outliers segun las pripiedades individuales de cada variable. 
+No obstante, a veces los outliers aparecen en combinación de variables. Así pues estudiaremos los outliers mediante metodos multivarinate
+
+Para detectarlos se pueden usar métodos como la distancia de Mahalanobis o algoritmos más avanzados de detección de anomalías. 
+
+## Cas general
+
+## Distancia de Mahalanobis 
+
+```{r}
+dades <- data[, varNum]
+for(v in varNum){
+  dades[[v]] <- as.numeric(as.character(dades[[v]]))
+}
+
+dades2 <- na.omit(dades)
+
+distancia_mahalanobis <- mahalanobis(
+  dades2,
+  center = colMeans(dades2),
+  cov    = cov(dades2)
+)
+#Grafiquem el plot de la densitat de les distancies
+plot(density(distancia_mahalanobis))
+```
+
+El gráfico nos sugiere que la gran mayoría de los clientes están dentro de un rango normal, no obstante, existe un grupo pequeño con distancias muy elevadas que se pueden considerar claramente outliers. 
+
+La cola larga a la derecha es la señal principal de anomalías.
+
+Ara se muestran aquellos individuos de la bbdd que quedan sobre del 99% de la distribució $\chi^2$
+
+```{r}
+cutoff <- qchisq(p = 0.99, df = ncol(dades2))
+dades2[distancia_mahalanobis>cutoff, ]
+```
+
+De todas estas variables vamos a ordenarlo de manera descendiente 
+
+```{r}
+dades2 <- dades2[order(distancia_mahalanobis, decreasing = TRUE),]
+par(mfrow=c(1,1))
+hist(distancia_mahalanobis)
+```
+
+Per estudiar la relación entre variables hacemos un scatterplot 3D de los outliers multivariantes. 
+
+Elegimos las variables: Age, Balance, EstimatedSalary
+
+```{r}
+library(scatterplot3d)
+library(plotly)
+umbral <- 8
+
+# Crear columna de outlier
+dades2$outlier <- (distancia_mahalanobis > umbral)
+
+# Colores para outliers vs normales
+dades2$color <- ifelse(dades2$outlier, "red", "black")
+
+scatterplot3d(dades2[, "Age"], 
+              dades2[, "Balance"], 
+              dades2[, "EstimatedSalary"],
+              color = dades2$color,
+              pch = 19,
+              main = "Outliers por distancia de Mahalanobis")
+
+fig <- plot_ly(dades2, 
+               x = ~Age, 
+               y = ~Balance, 
+               z = ~EstimatedSalary,
+               color = ~outlier,
+               colors = c("black", "red"),
+               marker = list(size = 4)) %>%
+       add_markers() %>%
+       layout(title = "Outliers multivariantes (Mahalanobis)")
+fig
+
+(who <- which(dades2[, "outlier"] == TRUE))
+```
+
+## Local outlier Factor
+
+Compara la densidad de un punto de los datos es un outlier en relación con su vecindad local. La idea central es comparar la densidad de un punto con la de sus vecinos: si un punto tiene una densidad significativamente menor que la de su entorno, se considera una anomalía.
+
+```{r}
+library(Rlof)
+library(dplyr)
+library(rgl)  # para gráficos 3D
+
+# Selección de tres variables numéricas
+dades_sel <- dades2[, c("Age", "Balance", "EstimatedSalary")]
+
+# Calcular LOF usando Rlof
+outlier.scores <- Rlof::lof(dades_sel, k = 5)
+
+# Ver distribución de los scores
+plot(density(outlier.scores), main = "Distribución LOF (k=5)")
+
+# Identificar los 5 principales outliers
+outliers <- order(outlier.scores, decreasing = TRUE)[1:5]
+
+# Etiquetas para un biplot PCA
+n <- nrow(dades_sel)
+labels <- rep(".", n)
+labels[outliers] <- "+"
+biplot(prcomp(dades_sel), cex = .8, xlabs = labels)
+
+# Marcar outliers en pares de variables
+pch <- rep(".", n)
+pch[outliers] <- "+"
+col <- rep("black", n)
+col[outliers] <- "red"
+pairs(dades_sel, pch = pch, col = col, main = "Outliers detectados por LOF")
+
+# Gráfico 3D
+plot3d(dades_sel[,1], dades_sel[,2], dades_sel[,3],
+       type = "s", col = col, size = 1,
+       xlab = "Age", ylab = "Balance", zlab = "EstimatedSalary")
+
+```
