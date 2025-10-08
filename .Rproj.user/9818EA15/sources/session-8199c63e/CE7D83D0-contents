@@ -1,23 +1,15 @@
 ---
 title: "Preprocessing Univ"
-output:
+output: 
   html_document:
-    toc: yes
-    toc_float: yes
-    toc_depth: 3
-    number_sections: yes
-  pdf_document:
-    toc: yes
-    toc_depth: 3
-    number_sections: yes
+    toc: true
+    toc_float: true
+    number_sections: true
 date: "2025-10-01"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-if (rstudioapi::isAvailable()) {
-  setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-}
 ```
 # Detección de outliers univariante: variables numéricas
 ```{r, include=FALSE}
@@ -26,6 +18,9 @@ library(ggplot2)
 library(moments)
 library(EnvStats)
 library(here)
+library(rstudioapi)
+setwd(dirname(getActiveDocumentContext()$path))
+knitr::opts_chunk$set(echo = TRUE)
 load(here("DATA", "data.RData"))
 ```
 Variables a estudiar:
@@ -57,7 +52,7 @@ n_vars <- length(varNum)
 ncol <- 2
 nrow <- ceiling(n_vars / ncol)
 
-par(mfrow = c(nrow, ncol), mar = c(4, 4, 2, 1))
+par(mfrow = c(nrow, ncol), mar = c(2, 2, 1, 1))
 
 for (var in varNum) {
   hist(data[[var]], 
@@ -90,7 +85,9 @@ symmetric<-c("TransactionFrequency", "Tenure", "EstimatedSalary", "CreditScore")
 non_symmetric<-c("Age","AvgTransactionAmount","DigitalEngagementScore", "NetPromoterScore")
 varNum
 ```
+
 ## Outliers variables simétricas
+
 Procedemos a la detección de outliers para las variables simétricas. Para ello utilizaremos el rango intercuartílico (IQR), de modo que los valores que queden fuera de dicho intervalo serán reconocidos como outliers univariantes
 ```{r}
 outlier_positions <- list()
@@ -126,6 +123,7 @@ par(mfrow = c(1, 2))
 boxplot(data$TransactionFrequency, main = "TransactionFrequency")
 boxplot(data$CreditScore, main = "CreditScore")
 ```
+
 ## Outliers variables no simétricas
 
 Ahora, para las variables no simétricas, utilizaremos el método del Hampel Identifier. Este método usa la mediana y MAD (Median Absolute Deviation) por ser estadísticos robustos que no se ven afectados por la asimetría de los datos. A diferencia de la media y desviación estándar, no asumen distribución normal y son resistentes a valores extremos. Esto permite detectar outliers reales sin que la forma sesgada de la distribución afecte los límites de detección.
@@ -156,6 +154,7 @@ longitudes_ns <- sapply(outlier_positions_non_symmetric, length)
 longitudes_ns
 ```
 Vemos que, con los valores de los parámetros escogidos, obtenemos una proporción de cerca de un 4% de outliers, exepto para DigitalEngagementScore, que parece una distribución más densa.
+
 ## Verificación por proporciones respecto a la variable salida
 
 Ahora haremos una comparación de las proporciones segun el grupo (train o test) para evaluar si hay alguna anomalía.
@@ -209,6 +208,7 @@ for (var in names(todas_outliers)) {
 proporcion_outliers_completa
 ```
 Vemos que las proporciones tienen bastante sentido si las miramos segun el grupo train/test.
+
 ## Detección de valores imposibles
 
 Ahora haremos un summary de las variables donde hemos detectado outliers para determinar si hay valores imposibles (como una persona con edad 180).
