@@ -6,13 +6,9 @@
 
 ## Cosas a decidir
 
-# Categorizar la variable complaincounts, mayoria son 0 i num of products
-# decidir como maximo cuantos missings por fila
-# cargar las variables no signicativas para la variable respuesta.
-# agrupar en rangos ComplaintsCount
-# Añadir variable dummy para Balance (con muchos 0)
-# Ajustar peso de variable respuesta
-
+# Categorizar la variable complaincounts, mayoria son 0 i num of products, binaria i 3 grupos de num of prodtos
+# decidir como maximo cuantos missings por fila <- nbo hacer nada de momento
+# cargar las variables no signicativas para la variable respuesta. hacer modelo reducido
 ## ==== Análisis exploratorio ====
 
 # 1 Análisis exploratorio de una variable 
@@ -157,6 +153,7 @@ for (varc1 in varCat) {
 # Considero que no es tan important estudiar les relaciones entre les varibales.
 
 # relacion entre exited (var resposta) i las categoricas
+par(mfrow = c(3, 3)) 
 cat<-varCat[-10]
 v<-"Exited"
 for (varc1 in cat) {
@@ -269,8 +266,8 @@ vis_miss(data)
 #el id con un 21%, debido que en el test no exite missings.
 
 na_por_fila <- rowSums(is.na(data))
-filas_15_miss <- which(na_por_fila >= 11)
-s<-data[filas_15_miss,]
+filas_miss <- which(na_por_fila >= 15)
+s<-data[filas_miss,]
 sum(s$group=="test") # hay 212 individuos con 11 o mas missings
 
 
