@@ -201,30 +201,6 @@ for (var in varNum) {
   print(p)
 }
 
-# test de medias.
-
-resultados <- data.frame(
-  Variable = character(),
-  Media_Exited0 = numeric(),
-  Media_Exited1 = numeric(),
-  p_value = numeric(),
-  stringsAsFactors = FALSE
-)
-
-for (var in varNum) {
-  medias <- tapply(data[[var]], data$Exited, mean, na.rm = TRUE)
-  p_val <- t.test(data[[var]] ~ data$Exited)$p.value
-  
-  resultados <- rbind(resultados, data.frame(
-    Variable = var,
-    Media_Exited0 = medias["0"],
-    Media_Exited1 = medias["1"],
-    p_value = p_val
-  ))
-}
-
-resultados
-
 # Misma dsitribución tanto para los que marchan como los que no.
 # Salvo la variable age,creditscore,num of products, Balance,Estimated salary.
 
