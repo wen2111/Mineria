@@ -1,0 +1,172 @@
+---
+title: "AED"
+author: "Wenjia Ye"
+date: "2025-10-08"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE)
+```
+
+```{r}
+load("C:/Users/34688/OneDrive - Universitat de Barcelona/Escritorio/Mineria/DATA/data.RData")
+library(ggplot2)
+library(psych)
+```
+
+# Anàlisis univariante
+
+## Univariante Numèrica
+
+## Univariante Categòrica
+
+# Anàlisis bivariante
+
+Es realizarà un estudi a dos dimensions per trobar possibles relacions interessants.
+
+## Numèrica i numèrica
+
+Estudiarem la correlació entre les varibales numèriques.
+
+```{r}
+cor(data[, varNum],use = "pairwise.complete.obs")
+corPlot(data[, varNum])
+```
+S'observa que majoritariament les variables no estan correlacionades, totes amb valors propers a 0. Excepte dos casos, una correlació negativa entre ComplaintsCount i NetPromoterScore de -0.69 i Balance amb NumOfProducts de -0.31. Com s'ha comentat previament, la varible NumOfProducts i ComplaintsCount possiblement es transformarà com a variable categòrica, llavors, no es realitzà cap canvi aqui.
+
+## Categòrica i categòrica
+
+S'ha estudiat la relació entre la varible resposta Exited i la resta de variables categòriques.
+
+```{r}
+cat<-varCat[-10]
+v<-"Exited"
+par(mfrow = c(3, 3)) 
+for (varc1 in cat) {
+    if (varc1 != v) {
+      prop_table <- prop.table(table(data[, v], data[, varc1]),margin = 2)
+      print(prop_table)
+      barplot(prop_table, beside = TRUE,main = paste0(v,"&",varc1))
+    }
+}
+```
+
+S'observa que la distribució de la variable respota és molt similar dins de cada grup excepte alguns. A través del gràfic de barres es veu la variable Geography, IsActiveMember i Gender tenen una diferencia considerable i obtenim les conclusions següents.
+
+- Els d'origen alemany tenen aproximandament 1/3 de probalitat de marxar.
+- Les dones marxen amb més probabilitat.
+- Els membres no actius tenen una prob més elevada de marxar.
+
+S'ha realitzat el test de chi-quadrat per tal de veure si la diferencia observada és significativa.
+
+```{r}
+for (varc1 in cat) {
+  if (varc1 != v) {
+    tab <- table(data[[v]], data[[varc1]])
+    test <- chisq.test(tab, correct = FALSE)
+    
+    cat("\nVariable:", varc1, "\n")
+    cat("Chi-squared =", round(test$statistic, 3),
+        "df =", test$parameter,
+        "p-value =", signif(test$p.value, 5), "\n")
+    
+    if (test$p.value < 0.05) cat("-> Diferencias significativas entre columnas\n")
+  }
+}
+```
+
+Un cop fet el test, s'afirma lo que s'ha concluït anteriorment.
+
+## Numèrica i categòrica
+
+Estudiem la variable resposta amb la resta de variables numèriques.
+
+```{r}
+for (var in varNum) {
+  p <- ggplot(data, aes(x = factor(Exited), y = .data[[var]], fill = factor(Exited))) +
+    geom_boxplot(alpha = 0.7, na.rm = TRUE) +
+    labs(x = "Exited", 
+         y = var,
+         title = paste("Distribución de", var, "por Exited")) +
+    scale_fill_manual(values = c("#66CC99", "#FF6666"), 
+                      name = "Exited", 
+                      labels = c("No", "Sí")) +
+    theme_minimal()
+  
+  print(p)
+}
+```
+
+Observem la mateixa distribució de les varibles numèriques segons si marxa o no del banc excepte les variables age,creditscore,numofproducts, Balance i Estimated salary.
+
+Realitzem el test de medianas per veure si la diferencia és significativa.
+```{r}
+resultados_mediana <- data.frame(
+  Variable = character(),
+  Mediana_Exited0 = numeric(),
+  Mediana_Exited1 = numeric(),
+  p_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (var in varNum) {
+  medianas <- tapply(data[[var]], data$Exited, median, na.rm = TRUE)
+  p_val <- wilcox.test(data[[var]] ~ data$Exited)$p.value
+  
+  resultados_mediana <- rbind(resultados_mediana, data.frame(
+    Variable = var,
+    Mediana_Exited0 = medianas["0"],
+    Mediana_Exited1 = medianas["1"],
+    p_value = p_val
+  ))
+}
+resultados_mediana
+```
+
+Com a resultat s'observa que ens surt significatius aquells vaariables mencionades anteriorment. LLavors podem concluir lo següent:
+
+- Els que tenen una edat més elevada tendeixen a marxar del banc amb més probabilitat.
+
+- Els que tenen un creditScore baix tendeixen a marxar del banc amb més probabilitat.
+
+- Els que tenen un salary estimat més elevat tendeixen a marxar del banc amb més probabilitat.
+
+- Els que tenen només un producte tendeixen a marxar amb més probabilitat.
+
+- Els que tenen un saldo més elevat tendeixen a marxar amb més probabilitat.
+
+
+# Missings
+
+# Annex
+
+```{r,echo=FALSE}
+# taules fetes amb el 100% per columna. És a dir, del grup 1, A+B+C sumen 100, del grup 2 A+B+C=100%.
+
+for (varc1 in varCat) {
+  for (varc2 in varCat) {
+    if (varc1 != varc2) {
+      prop_table <- prop.table(table(data[, varc1], data[, varc2]),margin = 2)
+      cat("=============", varc1, " vs. ", varc2, "=========================\n")
+      print(prop_table)
+    }
+  }
+}
+
+par(mfrow = c(2, 2))  
+for (varc1 in varCat) {
+  for (varc2 in varCat) {
+    if (varc1 != varc2) {
+      prop_table <- prop.table(table(data[, varc1], data[, varc2]),margin =2 )
+      barplot(prop_table, beside = TRUE,main = paste0(varc1,"&",varc2))
+    }
+  }
+}
+
+# Desbalanceig entre les combinacions de MaritalStatus, 
+# LoanSatatus,Education level, SavingAccount i CustumerSegem.
+# no s'observa res rellevant. Masses combinacions.
+# Considero que no es tan important estudiar les relaciones entre les varibales.
+```
+
