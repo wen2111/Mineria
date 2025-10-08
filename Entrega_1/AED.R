@@ -248,7 +248,8 @@ sum(s$group=="test") # hay 212 individuos con 11 o mas missings
 
 
 ## Aleatoriedad de los missings
-install.packages("naniar")
+# install.packages("naniar")
 library(naniar)
 naniar::mcar_test(data)
 # p-valor = 0.387 > 0.05, por lo que no se rechaza H0: los missings son aleatorios (MCAR)
+save.image("HistAED.RData")
