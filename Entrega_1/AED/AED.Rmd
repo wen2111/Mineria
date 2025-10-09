@@ -280,10 +280,50 @@ for (varc1 in varCat) {
     }
   }
 }
+```
+Desbalanceig entre les combinacions de MaritalStatus, LoanSatatus,Education level, SavingAccount i CustumerSegem.
+No s'observa res rellevant. Masses combinacions.Considero que no es tan important estudiar les relaciones entre les variables.
 
-# Desbalanceig entre les combinacions de MaritalStatus, 
-# LoanSatatus,Education level, SavingAccount i CustumerSegem.
-# no s'observa res rellevant. Masses combinacions.
-# Considero que no es tan important estudiar les relaciones entre les varibales.
+```{r}
+library(naniar)
+library(ggplot2)
+for (varN1 in varNum) {
+  for (varN2 in varNum) {
+    if (varN1 != varN2) {
+      p <- ggplot(data, aes(x = varN1, y = varN2)) +
+        geom_miss_point() +
+        theme_minimal() +
+        labs(title = paste0("Valores faltantes", varN1, " VS ", varN2), x = varN1, y = varN2)
+      # prop_table <- prop.table(table(data[, varc1], data[, varc2]),margin = 2)
+      # cat("=============", varc1, " vs. ", varc2, "=========================\n")
+      print(p)
+    }
+  }
+}
+```
+```{r}
+## COMPTE!!! MOLTS GRÀFICS
+# plot_missing_pair <- function(df, xvar, yvar) {
+#   tmp <- df[, c(xvar, yvar)]
+#   names(tmp) <- c("x", "y")
+#   tmp$missing <- ifelse(is.na(tmp$x) | is.na(tmp$y), "Missing", "Complete")
+# 
+#   ggplot(tmp, aes(x = x, y = y)) +
+#     geom_point(data = subset(tmp, missing == "Complete"),
+#                alpha = 0.25, size = 1) +
+#     geom_point(data = subset(tmp, missing == "Missing"),
+#                color = "red", size = 1.8) +
+#     theme_minimal() +
+#     labs(title = paste("Valores faltantes:", xvar, "vs", yvar),
+#          x = xvar, y = yvar)
+# }
+# 
+# 
+# for (x in varNum) {
+#   for (y in varNum) {
+#     if (x != y) print(plot_missing_pair(data, x, y))
+#   }
+# }
+
 ```
 
