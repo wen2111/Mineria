@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE)
 ```
 
 ```{r}
-load("C:/Users/34688/OneDrive - Universitat de Barcelona/Escritorio/Mineria/DATA/data.RData")
+load("Mineria/DATA/data.RData")
 library(ggplot2)
 library(psych)
 ```
@@ -22,6 +22,11 @@ library(psych)
 library(psych)
 psych::describe(data[, varNum])
 ```
+Hi ha 11 variables. En general, les variables numèriques presenten distribucions raonablement equilibrades, tot i que algunes mostren un comportament més extrem o asimètric.
+
+- En el cas d’AvgTransactionAmount, la distribució aimètrica. Hi ha petit grup de clients que realitzen transaccions molt superiors a la mitjana. Hi pot haver la presència d’outliers.
+- Per a la variable Balance, la distribució és asim
+- Per a la variable ComplaintsCount, la mitjana és molt baixa (0.3) i la mediana és 0, indicant que la majoria dels clients no presenten queixes. S'observa una distribució molt asimètrica amb una gran concentració de valors baixos.
 
 ```{r}
 ### base
