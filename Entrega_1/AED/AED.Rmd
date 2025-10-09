@@ -1,6 +1,6 @@
 ---
 title: "AED"
-author: "Wenjia Ye"
+author: "Wenjia Ye, Siling Guo"
 date: "2025-10-08"
 output: pdf_document
 ---
@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE)
 ```
 
 ```{r}
-load("Mineria/DATA/data.RData")
+# load("Mineria/DATA/data.RData")
 library(ggplot2)
 library(psych)
 ```
@@ -25,8 +25,7 @@ psych::describe(data[, varNum])
 Hi ha 11 variables. En general, les variables numèriques presenten distribucions raonablement equilibrades, tot i que algunes mostren un comportament més extrem o asimètric.
 
 - En el cas d’AvgTransactionAmount, la distribució aimètrica. Hi ha petit grup de clients que realitzen transaccions molt superiors a la mitjana. Hi pot haver la presència d’outliers.
-- Per a la variable Balance, la distribució és asim
-- Per a la variable ComplaintsCount, la mitjana és molt baixa (0.3) i la mediana és 0, indicant que la majoria dels clients no presenten queixes. S'observa una distribució molt asimètrica amb una gran concentració de valors baixos.
+- Per a la variable ComplaintsCount, la mitjana és molt baixa (0,3) i la mediana és 0, indicant que la majoria dels clients no presenten queixes. S'observa una distribució molt asimètrica amb una gran concentració de valors baixos.
 
 ```{r}
 ### base
@@ -62,17 +61,31 @@ for (var in varNum) {
   plots_box <- append(plots_box, list(boxp))
 }
 
-dev.new()
-final_histo <- Reduce(`+`, plots_histo) + plot_layout(ncol = 2)
-final_box <- Reduce(`+`, plots_box) + plot_layout(ncol = 2)
-final_histo
-final_box
+# final_histo <- Reduce(`+`, plots_histo) + plot_layout(ncol = 2) 
+# final_box <- Reduce(`+`, plots_box) + plot_layout(ncol = 2) 
+# final_histo 
+# final_box
 
+library(gridExtra)
+
+plots_per_page <- 6
+n_pages_histo <- ceiling(length(plots_histo) / plots_per_page)
+n_pages_box   <- ceiling(length(plots_box) / plots_per_page)
+
+for (i in seq_len(n_pages_histo)) {
+  idx <- ((i - 1) * plots_per_page + 1):min(i * plots_per_page, length(plots_histo))
+  grid.arrange(grobs = plots_histo[idx], ncol = 2)
+}
+
+for (i in seq_len(n_pages_box)) {
+  idx <- ((i - 1) * plots_per_page + 1):min(i * plots_per_page, length(plots_box))
+  grid.arrange(grobs = plots_box[idx], ncol = 2)
+}
 ```
-
+S'observa queen Balance i AvgTransactionAmount tenen acumulació en valors baixos. NumOfProducts i ComplainCount destaquen per la seva distribució discreta, s'indica la necessitat de transformar o escalar les variables indicades.
 
 ## Univariant Categòrica
-```{r}
+```{r univar-cat, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 for (var in varCat) {
   tablaAbs <- data.frame(table(data[, var]))
   tablaFreq <- data.frame(table(data[, var])/sum(table(data[, var])))
@@ -80,9 +93,10 @@ for (var in varCat) {
   tablaAbs[, "FreqRel"] <- tablaFreq[m, "Freq"]
   colnames(tablaAbs) <- c("Categoria", "FreqAbs", "FreqRel")
   
-  cat("===============", var, "===================================\n")
-  print(tablaAbs)
-  cat("==================================================\n")
+  tabla_str <- kable(tablaAbs, format = "pipe")
+  tabla_str <- paste(tabla_str, collapse = "\n")
+
+  cat(paste0("### ", var, "\n\n", tabla_str, "\n\n"))
 }
 ```
 
@@ -113,10 +127,16 @@ for (var in varCat) {
   i <- i + 1
 }
 # Mostrar todos los gráficos en un grid (ejemplo con 2 columnas)
-dev.new()
-grid.arrange(grobs = plots, ncol = 2)
-```
+grid.arrange(grobs = plots[1:6], ncol = 2)
+grid.arrange(grobs = plots[7:11], ncol = 2)
 
+```
+S'observa que la distribució de les variables categòriques és bastant raonable. Però es pot tenir en compte els següents:
+- Més de 50% viuen en França.
+- Més de 50% están casats.
+- Més de 70% tenen tarjeta de crèdits, i més de 60% tenen comptes d'estalvis.
+- Més de 60% tenen formació igual o superior a la universitat.
+- Només 20% marxen del banc.
 
 # Anàlisis bivariant
 
