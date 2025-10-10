@@ -36,7 +36,6 @@ for (var in varNum) {
 }
 
 ### ggplot2 
-library(ggplot2)
 library(patchwork)
 
 # Crear listas separadas
@@ -86,6 +85,7 @@ S'observa queen Balance i AvgTransactionAmount tenen acumulació en valors baixo
 
 ## Univariant Categòrica
 ```{r univar-cat, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(kableExtra)
 for (var in varCat) {
   tablaAbs <- data.frame(table(data[, var]))
   tablaFreq <- data.frame(table(data[, var])/sum(table(data[, var])))
@@ -286,44 +286,33 @@ No s'observa res rellevant. Masses combinacions.Considero que no es tan importan
 
 ```{r}
 library(naniar)
-library(ggplot2)
-for (varN1 in varNum) {
-  for (varN2 in varNum) {
-    if (varN1 != varN2) {
-      p <- ggplot(data, aes(x = varN1, y = varN2)) +
-        geom_miss_point() +
-        theme_minimal() +
-        labs(title = paste0("Valores faltantes", varN1, " VS ", varN2), x = varN1, y = varN2)
-      # prop_table <- prop.table(table(data[, varc1], data[, varc2]),margin = 2)
-      # cat("=============", varc1, " vs. ", varc2, "=========================\n")
-      print(p)
-    }
-  }
+gg_miss_var(data)
+VarPar <- list(
+  c("DigitalEngagementScore", "TransactionFrequency"),
+  c("DigitalEngagementScore", "IsActiveMember"),
+  c("NetPromoterScore", "ComplaintsCount"),
+  c("Balance", "CreditScore"),
+  c("EstimatedSalary", "CustomerSegment"),
+  c("Exited", "Balance"),
+  c("Exited", "Age"),
+  c("Exited", "CreditScore"),
+  c("Exited", "NumOfProducts")
+)
+
+for (pair in VarPar) {
+  x <- pair[1]; y <- pair[2]
+  print(
+    ggplot(data, aes(x = .data[[x]], y = .data[[y]])) +
+      geom_miss_point() +
+      labs(title = paste("Valores faltantes:", x, "vs", y)) +
+      theme_minimal()
+  )
 }
 ```
-```{r}
-## COMPTE!!! MOLTS GRÀFICS
-# plot_missing_pair <- function(df, xvar, yvar) {
-#   tmp <- df[, c(xvar, yvar)]
-#   names(tmp) <- c("x", "y")
-#   tmp$missing <- ifelse(is.na(tmp$x) | is.na(tmp$y), "Missing", "Complete")
-# 
-#   ggplot(tmp, aes(x = x, y = y)) +
-#     geom_point(data = subset(tmp, missing == "Complete"),
-#                alpha = 0.25, size = 1) +
-#     geom_point(data = subset(tmp, missing == "Missing"),
-#                color = "red", size = 1.8) +
-#     theme_minimal() +
-#     labs(title = paste("Valores faltantes:", xvar, "vs", yvar),
-#          x = xvar, y = yvar)
-# }
-# 
-# 
-# for (x in varNum) {
-#   for (y in varNum) {
-#     if (x != y) print(plot_missing_pair(data, x, y))
-#   }
-# }
+En analitzar els missings entre les variables que es poden tenir més relación, s'observa:
+- S’observa que la variable DigitalEngagementScore presenta valors faltants principalment en clients amb menor freqüència de transaccions. --Els clients amb baixa freqüència de transaccions són menys propensos a tenir una puntuació digital. (MNAR)
 
-```
+- Es detecta que la majoria de clients no actius no disposen d’una puntuació digital.
+
+- La variable NetPromoterScore presenta un nombre significatiu de valors faltants que distribueixen entre diversos nivells de ComplaintsCount, indica que alguns clients simplement no han contestat la pregunta de satisfacció, independentment del nombre de queixes.
 
