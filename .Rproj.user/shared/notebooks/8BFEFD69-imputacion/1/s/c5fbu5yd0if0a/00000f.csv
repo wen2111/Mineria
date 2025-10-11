@@ -1,0 +1,6 @@
+"0","library(dplyr)
+library(tidyr)
+library(Hmisc)
+"
+"2","Error en library(Hmisc): no hay paquete llamado ‘Hmisc’
+"
