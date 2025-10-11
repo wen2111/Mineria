@@ -286,6 +286,7 @@ No s'observa res rellevant. Masses combinacions.Considero que no es tan importan
 
 ```{r}
 library(naniar)
+
 gg_miss_var(data)
 VarPar <- list(
   c("DigitalEngagementScore", "TransactionFrequency"),
@@ -309,10 +310,5 @@ for (pair in VarPar) {
   )
 }
 ```
-En analitzar els missings entre les variables que es poden tenir més relación, s'observa:
-- S’observa que la variable DigitalEngagementScore presenta valors faltants principalment en clients amb menor freqüència de transaccions. --Els clients amb baixa freqüència de transaccions són menys propensos a tenir una puntuació digital. (MNAR)
 
-- Es detecta que la majoria de clients no actius no disposen d’una puntuació digital.
-
-- La variable NetPromoterScore presenta un nombre significatiu de valors faltants que distribueixen entre diversos nivells de ComplaintsCount, indica que alguns clients simplement no han contestat la pregunta de satisfacció, independentment del nombre de queixes.
-
+Asumim que són tots MCAR. No es veu cap patró clar.
