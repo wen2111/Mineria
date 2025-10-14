@@ -403,6 +403,7 @@ datamice<-data
 
 variables_numericas <- names(datamice)[sapply(datamice, is.numeric)]
 
+
 variables_no_imputar <- c("ID", "Exited")
 
 variables_numericas_imputar <- setdiff(variables_numericas, variables_no_imputar)
@@ -412,7 +413,8 @@ datamice_imputado <- datamice
 metodos <- make.method(datamice_imputado)
 
 metodos[variables_numericas_imputar] <- "pmm"  # Predictive Mean Matching
-
+metodos[variables_dicotomicas_imputar] <- "logit"
+metodos[variables_politomicas_imputar] <- "poly"
 for(var in names(metodos)) {
   if(!var %in% variables_numericas_imputar) {
     metodos[var] <- ""
