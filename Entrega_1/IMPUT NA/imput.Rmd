@@ -264,6 +264,11 @@ Por complicaciones técnicas al implementar el método MI, en este trabajo se op
 
 ## KNN mixto
 ```{r, include=FALSE}
+#####FUNCIONES PARA COMPARAR DISTRIBUCIONES PRE Y POST IMPUTACIÓN
+#LA PRIMERA ES PARA NUMÉRICAS (density_before_after)
+#LA SEGUNDA PARA CATEGÓRICAS (mass_before_after)
+
+
 density_before_after <- function(before, after) {
   require(ggplot2)
   require(dplyr)
@@ -384,43 +389,6 @@ mass_before_after <- function(before, after, max_categories = 10) {
           axis.text.x = element_text(angle = 45, hjust = 1))
 }
 ```
-Tras realizar una imputación KNN con k=3 se obtuvieron resultados insatisfactorios, dando unas densidades para las numéricas que no se ajustaban a las originales previas a la imputación. Haremos el intento con k=5 siguiendo el mismo proceso.
-
-```{r}
-library(VIM)
-
-modeCat <- function(x) {
-  tab <- table(x[!is.na(x)])
-  if(length(tab) == 0) return(NA)
-  names(tab)[which.max(tab)]
-}
-
-variables_a_imputar <- setdiff(names(data4knn), c("ID", "Exited", "Surname"))
-data4knn<-data
-set.seed(8888)
-imputed_data <- kNN(
-  data4knn,
-  variable = variables_a_imputar,
-  k = 5,
-  numFun = median,
-  catFun = modeCat
-)
-data4knn_imputed_knn <- imputed_data[, !grepl("_imp", names(imputed_data))]
-vis_dat(data4knn_imputed_knn)
-```
-Vemos que se han imputado las variables que queríamos y se han obviado ID, Surname y Exited
-```{r}
-density_before_after(data, data4knn_imputed_knn)
-```
-
-Vemos como la imputación por KNN mixto proporciona densidades que se alejan demasiado de la realidad en algunas variables numéricas. Por lo tanto, no podemos confiar en la imputación por knn. Miramos ahora las categóricas:
-```{r}
-mass_before_after(data, data4knn_imputed_knn)
-```
-Pese a que no se obtienen resultados muy dispares, si que observamos cierta descompensación en categorías de variables como Geography, HasCrCard o EducationLevel.
-
-Vemos como para k=5 se obtienen las mismas conclusiones que con k=3, por tanto no podemos confiar en knn como método de imputación para nuestros datos.
-
 
 ## Multiple chained Equations (MICE)
 
@@ -499,7 +467,7 @@ density_before_after(data, datamice_final)
 ```{r}
 data4knn<-datamice_final
 library(cluster)
-k <- 3
+k <- 5
 variables_excluir <- c("ID", "Surname", "Exited")
 
 vars_cat <- names(data4knn)[sapply(data4knn, function(x) is.character(x) | is.factor(x))]
@@ -529,6 +497,49 @@ vars_imputar <- setdiff(vars_cat, variables_excluir)
 
 vis_dat(data4knn_final)
 colSums(is.na(data4knn_final))
+mass_before_after(data, data4knn_final)
 ```
+
+Después de hacer KNN quedan algunos NA en algunas de las variables categóricas. A continuación volveremos a ejecutar knn sobre esta base de datos que ya ha pasado por la imputación numérica y también esta categórica, con el fin de comprobar si desaparecen los NA de nuestro data frame.
+
+
+## 5-NN(2)
+
+```{r}
+data4knn2<-data4knn_final
+library(cluster)
+k <- 5
+variables_excluir <- c("ID", "Surname", "Exited")
+
+vars_cat <- names(data4knn2)[sapply(data4knn2, function(x) is.character(x) | is.factor(x))]
+vars_imputar <- setdiff(vars_cat, variables_excluir)
+
+  data4knn_final2 <- data4knn2
+  vars_dist <- setdiff(names(data4knn2), variables_excluir)
+  dist_matrix <- as.matrix(daisy(data4knn2[vars_dist], metric = "gower"))
+
+  for(var in vars_imputar) {
+    na_idx <- which(is.na(data4knn_final2[[var]]))
+    
+    for(i in na_idx) {
+      distancias <- dist_matrix[i, ]
+      distancias[i] <- Inf
+      vecinos <- order(distancias)[1:k]
+      
+      valores <- data4knn_final[[var]][vecinos]
+      valores <- valores[!is.na(valores)]
+      
+      if(length(valores) > 0) {
+        data4knn_final2[[var]][i] <- names(sort(table(valores), decreasing = TRUE))[1]
+      }
+    }
+  }
+
+
+vis_dat(data4knn_final2)
+colSums(is.na(data4knn_final2))
+mass_before_after(data, data4knn_final2)
+```
+
 
 
