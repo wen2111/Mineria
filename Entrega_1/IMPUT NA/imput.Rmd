@@ -1,0 +1,563 @@
+---
+title: "imput na"
+author: "Laura Belmonte"
+date: "2025-10-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+load("~/Documents/GitHub/Mineria/DATA/data.RData")
+library(naniar)
+library(ggplot2)
+library(visdat)
+library(dplyr)
+library(tidyr)
+library(Hmisc)
+```
+
+Los valores faltantes surgen cuando una observación carece de información registrada en una determinada variable. Su correcta gestión es fundamental, ya que eliminarlos indiscriminadamente puede reducir de manera significativa el tamaño del conjunto de datos, mientras que imputarlos de forma inadecuada puede introducir sesgos y distorsionar los resultados del análisis.  
+
+Para abordar este problema existen diversas estrategias. Entre las más comunes se encuentran:  
+
+- **Eliminación** de filas o columnas con un número elevado de valores faltantes.  
+- **Imputación simple**, que consiste en reemplazar los valores ausentes con medidas como la media, mediana o moda.  
+- **Imputación avanzada**, donde se emplean métodos más sofisticados como K-Nearest Neighbors (KNN) o modelos predictivos para estimar los valores faltantes de manera más precisa.  
+
+
+# Exploración de los NA
+
+Realizamos un test de Little para comprobar si los NA de nuestros datos son MCAR (aleatorios) o si por el contrario siguen algún patron.
+
+El test de Little se utiliza para evaluar si los datos faltantes en un conjunto de datos siguen el mecanismo **MCAR** (*Missing Completely At Random*).
+
+### Hipótesis
+
+- **Hipótesis nula ($H_0$):**  
+  Los valores faltantes son completamente aleatorios (MCAR).  
+  Es decir, la probabilidad de que un valor esté ausente no depende de los datos observados   ni de los no observados.  
+
+- **Hipótesis alternativa ($H_1$):**  
+  Los valores faltantes no son completamente aleatorios.  
+  En este caso, el patrón de datos ausentes depende de los valores observados y/o de los no   observados.  
+
+```{r}
+naniar::mcar_test(data)
+```
+
+Dado que el pvalor es ampliamente superior a 0.05, aceptamos la hipótesis nula: no hay evidencia estadística para sospechar que los valores faltantes de nuestra base de datos no son fruto de la aleatoriedad.
+
+Vamos a visualizar la distribución de nuestros NA para las diferentes variables.
+
+```{r}
+vis_dat(data)
+```
+
+Tampoco se observa ningún patrón fuera de los generados para este problema concreto del caso del banco (ID, group, Exited).
+
+Cantidad de NA por variable:
+```{r}
+gg_miss_var(data) + labs(y = "Look at all the missing ones")
+```
+
+Ya habíamos visto que en todas las variables la proporción de NA es del 30%. Esto no pasa para ID, dado que los datos test no tienen valores faltantes ni para group, variable que hemos generado nosotros para indicar si una observación es grupo train/test.
+
+```{r}
+vis_miss(data);
+```
+
+Con este gràfico estamos recalcando la información conocida por estudios diferentes y por el gràdico anterior
+
+
+```{r}
+pct_miss_case(data)
+```
+
+# Imputación de los NA
+
+La imputación básica consiste en reemplazar los valores faltantes por estimaciones simples basadas en los datos disponibles, sin emplear modelos complejos. Entre los métodos más frecuentes se encuentran:
+
+- **Reemplazo por la media o mediana:** posibilidad para las variables numéricas.  
+- **Reemplazo por la moda:** aplicable a variables categóricas.  
+- **Constante o valor fijo:** se puede asignar un valor específico que tenga sentido según el contexto.  
+
+Estos métodos son fáciles de aplicar y permiten mantener el tamaño original del dataset, aunque no capturan relaciones más complejas entre las variables. Son una primera aproximación al manejo de datos faltantes, y en muchos casos se utilizan como paso previo antes de aplicar técnicas de imputación más avanzadas.
+
+## Imputación por media y mediana
+
+Como hemos comentado anteriormente la imputación de la media o mediana es adecuada para las variables numericas. Aplicaremos estos métodos a dichas variables y comprobaremos si la distribución posterior se ajusta bien a la de los datos con NA.
+
+```{r fig.width=14, fig.height=10}
+data_mean <- data %>%
+  mutate(across(where(is.numeric),
+                ~ Hmisc::impute(., fun = mean),
+                .names = "imputed_mean_{.col}"))
+
+data_median <- data %>%
+  mutate(across(where(is.numeric),
+                ~ Hmisc::impute(., fun = median),
+                .names = "imputed_median_{.col}"))
+
+data_all <- data %>%
+  bind_cols(
+    select(data_mean, starts_with("imputed_mean_")),
+    select(data_median, starts_with("imputed_median_"))
+  )
+
+
+df_long_all <- data_all %>%
+  select(where(is.numeric)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "VariableCompleta",
+    values_to = "Valor"
+  ) %>%
+  mutate(
+    Tipo = case_when(
+      grepl("^imputed_mean_", VariableCompleta) ~ "Media",
+      grepl("^imputed_median_", VariableCompleta) ~ "Mediana",
+      TRUE ~ "Original"
+    ),
+    Variable = gsub("^(imputed_mean_|imputed_median_)", "", VariableCompleta)
+  )
+ggplot(df_long_all, aes(x = Valor, fill = Tipo)) +
+  geom_density(alpha = 0.3) +
+  facet_wrap(~ Variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Comparación de imputación por media y mediana",
+       fill = "Tipo de dato")
+```
+
+Observamos como ni la media ni la mediana parecen métodos fiables para la imputación de ninguna de las numéricas, puesto que la densidad de ninguno de las dos metodologías se ajusta bien a la densidad orignal de los datos sin NA.
+
+## Moda 
+
+```{r,fig.width=14, fig.height=10}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+get_mode <- function(x) {
+  ux <- na.omit(unique(x))
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+data_mode <- data %>%
+  mutate(across(all_of(varCat),
+                ~ ifelse(is.na(.), as.character(get_mode(.)), as.character(.)),
+                .names = "imputed_mode_{.col}"))
+
+data_all <- data %>%
+  select(all_of(varCat)) %>%
+  mutate(across(everything(), as.character)) %>%   # <-- forzamos a character para evitar conflictos
+  bind_cols(
+    data_mode %>%
+      select(starts_with("imputed_mode_")) %>%
+      mutate(across(everything(), as.character))   # <-- igual aquí
+  )
+
+df_long_all <- data_all %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "VariableCompleta",
+    values_to = "Valor"
+  ) %>%
+  mutate(
+    Tipo = case_when(
+      grepl("^imputed_mode_", VariableCompleta) ~ "Moda",
+      TRUE ~ "Original"
+    ),
+    Variable = gsub("^(imputed_mode_)", "", VariableCompleta)
+  )
+
+ggplot(df_long_all, aes(x = Valor, fill = Tipo)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ Variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Comparación de imputación por moda (variables categóricas definidas)",
+       fill = "Tipo de dato")
+
+```
+
+La imputación por moda no es el mejor metodo de imputación para las variables categoricas bien porque distorsiona severamente la distribución real de los datos, creando un sesgo excesivo hacia las categorías dominantes y eliminando la variabilidad natural del dataset original.
+
+## Media con variable target
+
+```{r fig.width=14, fig.height=10}
+data_imputado <- data
+
+var_numericas <- names(data_imputado)[sapply(data_imputado, is.numeric)]
+var_numericas <- var_numericas[var_numericas != "Exited"]
+
+data_imputado <- data_imputado %>%
+  group_by(Exited) %>%
+  mutate(across(all_of(var_numericas), 
+                ~ {
+                  media_grupo <- mean(., na.rm = TRUE)
+                  ifelse(is.na(.), media_grupo, .)
+                })) %>%
+  ungroup()
+
+df_original <- data %>%
+  select(where(is.numeric)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Variable",
+    values_to = "Valor"
+  ) %>%
+  mutate(Tipo = "Original")
+
+df_imputado <- data_imputado %>%
+  select(where(is.numeric)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Variable",
+    values_to = "Valor"
+  ) %>%
+  mutate(Tipo = "Imputado")
+
+df_comparacion <- bind_rows(df_original, df_imputado)
+
+ggplot(df_comparacion, aes(x = Valor, fill = Tipo)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ Variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Comparación de distribuciones: Pre vs Post Imputación (Media por Grupo)",
+       x = "Valor", 
+       y = "Densidad",
+       fill = "Tipo de dato") +
+  scale_fill_manual(values = c("Original" = "red", "Imputado" = "blue"))
+```
+Vemos que la imputación de media con una variable target (en este caso exited) tampoco representa una opción fiable de cara a la imputación de datos faltantes, dado que no respeta la densidad original para ninguna de las variables numéricas
+
+## Mi method
+
+El método de imputación múltiple es una técnica estadística avanzada para manejar valores faltantes en un conjunto de datos.
+
+A diferencia de las imputaciones simples, que reemplazan cada valor faltante por un único estimador como la media o la moda, MI genera varios datasets completos donde los valores faltantes son reemplazados por estimaciones diferentes basadas en modelos estadísticos que capturan la incertidumbre de los datos ausentes.
+
+```{r, eval=FALSE}
+data_mi<-data
+library(dplyr)
+library(mi)
+
+data_mi <- data_mi %>%
+  mutate(across(where(is.character), as.factor))
+
+colSums(is.na(data_mi))
+
+data_mi <- data_mi %>% select(where(~ any(is.na(.))))
+
+mi_data <- mi(data_mi, seed = 335, m = 3, maxit = 5)
+
+summary(mi_data)
+
+plot(mi_data)
+par(ask = FALSE)
+```
+
+Por complicaciones técnicas al implementar el método MI, en este trabajo se optó por utilizar el paquete MICE, que permite realizar imputación múltiple de manera más estable y flexible sobre datasets con valores faltantes.
+
+## KNN mixto
+```{r, include=FALSE}
+#####FUNCIONES PARA COMPARAR DISTRIBUCIONES PRE Y POST IMPUTACIÓN
+#LA PRIMERA ES PARA NUMÉRICAS (density_before_after)
+#LA SEGUNDA PARA CATEGÓRICAS (mass_before_after)
+
+
+density_before_after <- function(before, after) {
+  require(ggplot2)
+  require(dplyr)
+  require(tidyr)
+  require(purrr)
+  
+  # Identificar variables numéricas comunes
+  numeric_vars_before <- before |> 
+    select(where(is.numeric)) |>
+    names()
+  
+  numeric_vars_after <- after |> 
+    select(where(is.numeric)) |>
+    names()
+  
+  # Variables comunes entre ambos datasets
+  common_vars <- intersect(numeric_vars_before, numeric_vars_after)
+  
+  if (length(common_vars) == 0) {
+    stop("No hay variables numéricas comunes entre los datasets")
+  }
+  
+  # Crear datos combinados
+  density_df <- map_dfr(common_vars, function(var) {
+    data.frame(
+      variable = var,
+      value = c(before[[var]], after[[var]]),
+      dataset = rep(c("Original", "Imputado"), 
+                   c(nrow(before), nrow(after)))
+    )
+  }) |>
+    filter(!is.na(value))
+  
+  # Crear el gráfico
+  ggplot(density_df, aes(x = value, color = dataset, fill = dataset)) +
+    facet_wrap(~variable, scales = "free") +
+    geom_density(alpha = 0.3) +
+    scale_color_manual(values = c("#1f77b4", "#ff7f0e")) +
+    scale_fill_manual(values = c("#1f77b4", "#ff7f0e")) +
+    labs(title = "Comparación de Densidades: Original vs Imputado",
+         x = "Valores", 
+         y = "Densidad") +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+}
+mass_before_after <- function(before, after, max_categories = 10) {
+  require(ggplot2)
+  require(dplyr)
+  require(tidyr)
+  require(purrr)
+  
+  # Identificar variables categóricas comunes
+  categorical_vars_before <- before |> 
+    select(where(~ is.factor(.) | is.character(.))) |>
+    names()
+  
+  categorical_vars_after <- after |> 
+    select(where(~ is.factor(.) | is.character(.))) |>
+    names()
+  
+  # Variables comunes entre ambos datasets
+  common_vars <- intersect(categorical_vars_before, categorical_vars_after)
+  
+  if (length(common_vars) == 0) {
+    stop("No hay variables categóricas comunes entre los datasets")
+  }
+  
+  # Crear datos combinados
+  mass_df <- map_dfr(common_vars, function(var) {
+    
+    # Convertir a factor si es character
+    before_vec <- if(is.character(before[[var]])) {
+      as.factor(before[[var]])
+    } else {
+      before[[var]]
+    }
+    
+    after_vec <- if(is.character(after[[var]])) {
+      as.factor(after[[var]])
+    } else {
+      after[[var]]
+    }
+    
+    # Calcular proporciones
+    prop_before <- proportions(table(before_vec))
+    prop_after <- proportions(table(after_vec))
+    
+    data.frame(
+      variable = var,
+      category = c(names(prop_before), names(prop_after)),
+      proportion = c(prop_before, prop_after),
+      dataset = rep(c("Original", "Imputado"), 
+                   c(length(prop_before), length(prop_after)))
+    )
+  }) |>
+    filter(!is.na(category))
+  
+  # Filtrar categorías si hay demasiadas
+  if (max_categories > 0) {
+    mass_df <- mass_df |>
+      group_by(variable) |>
+      slice_max(proportion, n = max_categories) |>
+      ungroup()
+  }
+  
+  # Crear el gráfico
+  ggplot(mass_df, aes(x = category, y = proportion, 
+                      color = dataset, fill = dataset)) +
+    facet_wrap(~variable, scales = "free") +
+    geom_col(alpha = 0.6, width = 0.7, position = "dodge") +
+    scale_color_manual(values = c("#1f77b4", "#ff7f0e")) +
+    scale_fill_manual(values = c("#1f77b4", "#ff7f0e")) +
+    labs(title = "Comparación de Distribuciones Categóricas: Original vs Imputado",
+         x = "Categorías", 
+         y = "Proporción") +
+    theme_minimal() +
+    theme(legend.position = "bottom",
+          axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+## Multiple chained Equations (MICE)
+
+Para la implementación práctica de la imputación múltiple, se utilizó el paquete MICE.
+Este método permite generar múltiples datasets completos mediante modelos estadísticos iterativos, manejando tanto variables numéricas como categóricas de manera eficiente.
+
+A continuación, realizamos la imputación de los valores faltantes para las variables numéricas de manera multivariada (utilizando la información de todas las variables numéricas)
+```{r}
+
+library(mice)
+library(VIM)  # Para visualizar los datos imputados
+
+datamice <- data
+
+# Identificar tipos de variables
+variables_numericas <- names(datamice)[sapply(datamice, is.numeric)]
+variables_dicotomicas <- names(datamice)[sapply(datamice, function(x) is.factor(x) && nlevels(x) == 2)]
+variables_polinomicas <- names(datamice)[sapply(datamice, function(x) is.factor(x) && nlevels(x) > 2)]
+
+# Variables que no se deben imputar
+variables_no_imputar <- c("ID", "Exited")
+
+# Variables a imputar
+variables_numericas_imputar <- setdiff(variables_numericas, variables_no_imputar)
+variables_dico_imputar <- setdiff(variables_dicotomicas, variables_no_imputar)
+variables_poli_imputar <- setdiff(variables_polinomicas, variables_no_imputar)
+
+# Copia de los datos para imputar
+datamice_imputado <- datamice
+
+# Crear métodos de imputación
+metodos <- make.method(datamice_imputado)
+
+# Asignar métodos de imputación según el tipo de variable
+metodos[variables_numericas_imputar] <- "pmm"  # Predictive Mean Matching
+metodos[variables_dico_imputar] <- "logreg"    # Regresión logística para dicotómicas
+metodos[variables_poli_imputar] <- "polyreg"   # Regresión polinomial para polinómicas
+
+# Configurar la matriz de predictores
+pred_mat <- make.predictorMatrix(datamice_imputado)
+
+# Configurar qué variables pueden predecir y ser predecidas
+for (var in names(datamice_imputado)) {
+  if (var %in% variables_numericas_imputar) {
+    # Esta variable numérica puede ser predicha por otras numéricas imputables
+    pred_mat[var, variables_numericas_imputar] <- 1
+    pred_mat[var, var] <- 0  # No usar la variable misma para predecirse
+  }
+  # Para excluir ID y Exited de las predictoras y de las imputadas
+  if (var %in% variables_no_imputar | !var %in% variables_numericas) {
+    pred_mat[var, ] <- 0  # No usar esta variable para predecir otras
+    pred_mat[, var] <- 0  # No usar otras variables para predecir esta
+  }
+}
+
+# Realizar la imputación MICE
+imputacion <- mice(
+  datamice_imputado,
+  m = 5,
+  maxit = 10,
+  method = metodos,
+  predictorMatrix = pred_mat,
+  seed = 123,
+  printFlag = TRUE
+)
+
+# Completar los datos imputados
+datamice_completo <- complete(imputacion, 1)
+
+# Combinar los datos imputados con los originales
+datamice_final <- datamice
+datamice_final[variables_numericas_imputar] <- datamice_completo[variables_numericas_imputar]
+datamice_final[variables_dico_imputar] <- datamice_completo[variables_dico_imputar]
+datamice_final[variables_poli_imputar] <- datamice_completo[variables_poli_imputar]
+
+# Visualizar los datos imputados para verificar
+aggr_plot <- aggr(datamice_final, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(datamice_final), cex.axis=.7, gap=3, ylab=c("Histograma de datos faltantes","Patrón"))
+print(aggr_plot)
+vis_dat(datamice_final)
+
+```
+
+
+
+```{r}
+density_before_after(data, datamice_final)
+
+```
+
+###COMENTAR GRÁFICO###
+
+
+## Imputación multivariante categórica: KNN
+```{r}
+data4knn<-datamice_final
+library(cluster)
+k <- 5
+variables_excluir <- c("ID", "Surname", "Exited")
+
+vars_cat <- names(data4knn)[sapply(data4knn, function(x) is.character(x) | is.factor(x))]
+vars_imputar <- setdiff(vars_cat, variables_excluir)
+
+  data4knn_final <- data4knn
+  vars_dist <- setdiff(names(data4knn), variables_excluir)
+  dist_matrix <- as.matrix(daisy(data4knn[vars_dist], metric = "gower"))
+
+  for(var in vars_imputar) {
+    na_idx <- which(is.na(data4knn_final[[var]]))
+    
+    for(i in na_idx) {
+      distancias <- dist_matrix[i, ]
+      distancias[i] <- Inf
+      vecinos <- order(distancias)[1:k]
+      
+      valores <- data4knn_final[[var]][vecinos]
+      valores <- valores[!is.na(valores)]
+      
+      if(length(valores) > 0) {
+        data4knn_final[[var]][i] <- names(sort(table(valores), decreasing = TRUE))[1]
+      }
+    }
+  }
+
+
+vis_dat(data4knn_final)
+colSums(is.na(data4knn_final))
+mass_before_after(data, data4knn_final)
+```
+
+Después de hacer KNN quedan algunos NA en algunas de las variables categóricas. A continuación volveremos a ejecutar knn sobre esta base de datos que ya ha pasado por la imputación numérica y también esta categórica, con el fin de comprobar si desaparecen los NA de nuestro data frame.
+
+
+## 5-NN(2)
+
+```{r}
+data4knn2<-data4knn_final
+library(cluster)
+k <- 5
+variables_excluir <- c("ID", "Surname", "Exited")
+
+vars_cat <- names(data4knn2)[sapply(data4knn2, function(x) is.character(x) | is.factor(x))]
+vars_imputar <- setdiff(vars_cat, variables_excluir)
+
+  data4knn_final2 <- data4knn2
+  vars_dist <- setdiff(names(data4knn2), variables_excluir)
+  dist_matrix <- as.matrix(daisy(data4knn2[vars_dist], metric = "gower"))
+
+  for(var in vars_imputar) {
+    na_idx <- which(is.na(data4knn_final2[[var]]))
+    
+    for(i in na_idx) {
+      distancias <- dist_matrix[i, ]
+      distancias[i] <- Inf
+      vecinos <- order(distancias)[1:k]
+      
+      valores <- data4knn_final[[var]][vecinos]
+      valores <- valores[!is.na(valores)]
+      
+      if(length(valores) > 0) {
+        data4knn_final2[[var]][i] <- names(sort(table(valores), decreasing = TRUE))[1]
+      }
+    }
+  }
+
+
+vis_dat(data4knn_final2)
+colSums(is.na(data4knn_final2))
+mass_before_after(data, data4knn_final2)
+```
+
+
+
