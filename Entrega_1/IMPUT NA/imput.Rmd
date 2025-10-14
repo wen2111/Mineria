@@ -399,26 +399,35 @@ A continuación, realizamos la imputación de los valores faltantes para las var
 ```{r}
 
 library(mice)
-datamice<-data
+library(VIM)  # Para visualizar los datos imputados
 
+datamice <- data
+
+# Identificar tipos de variables
 variables_numericas <- names(datamice)[sapply(datamice, is.numeric)]
+variables_dicotomicas <- names(datamice)[sapply(datamice, function(x) is.factor(x) && nlevels(x) == 2)]
+variables_polinomicas <- names(datamice)[sapply(datamice, function(x) is.factor(x) && nlevels(x) > 2)]
 
+# Variables que no se deben imputar
 variables_no_imputar <- c("ID", "Exited")
 
+# Variables a imputar
 variables_numericas_imputar <- setdiff(variables_numericas, variables_no_imputar)
+variables_dico_imputar <- setdiff(variables_dicotomicas, variables_no_imputar)
+variables_poli_imputar <- setdiff(variables_polinomicas, variables_no_imputar)
 
+# Copia de los datos para imputar
 datamice_imputado <- datamice
 
+# Crear métodos de imputación
 metodos <- make.method(datamice_imputado)
 
+# Asignar métodos de imputación según el tipo de variable
 metodos[variables_numericas_imputar] <- "pmm"  # Predictive Mean Matching
+metodos[variables_dico_imputar] <- "logreg"    # Regresión logística para dicotómicas
+metodos[variables_poli_imputar] <- "polyreg"   # Regresión polinomial para polinómicas
 
-for(var in names(metodos)) {
-  if(!var %in% variables_numericas_imputar) {
-    metodos[var] <- ""
-  }
-}
-
+# Configurar la matriz de predictores
 pred_mat <- make.predictorMatrix(datamice_imputado)
 
 # Configurar qué variables pueden predecir y ser predecidas
@@ -428,7 +437,7 @@ for (var in names(datamice_imputado)) {
     pred_mat[var, variables_numericas_imputar] <- 1
     pred_mat[var, var] <- 0  # No usar la variable misma para predecirse
   }
-  # Para excluir ID y exited de las predictoras y de las imputadas
+  # Para excluir ID y Exited de las predictoras y de las imputadas
   if (var %in% variables_no_imputar | !var %in% variables_numericas) {
     pred_mat[var, ] <- 0  # No usar esta variable para predecir otras
     pred_mat[, var] <- 0  # No usar otras variables para predecir esta
@@ -438,19 +447,28 @@ for (var in names(datamice_imputado)) {
 # Realizar la imputación MICE
 imputacion <- mice(
   datamice_imputado,
-  m = 5,                    
-  maxit = 10,               
+  m = 5,
+  maxit = 10,
   method = metodos,
   predictorMatrix = pred_mat,
-  seed = 123,               
-  printFlag = TRUE          
+  seed = 123,
+  printFlag = TRUE
 )
 
+# Completar los datos imputados
 datamice_completo <- complete(imputacion, 1)
 
+# Combinar los datos imputados con los originales
 datamice_final <- datamice
 datamice_final[variables_numericas_imputar] <- datamice_completo[variables_numericas_imputar]
+datamice_final[variables_dico_imputar] <- datamice_completo[variables_dico_imputar]
+datamice_final[variables_poli_imputar] <- datamice_completo[variables_poli_imputar]
+
+# Visualizar los datos imputados para verificar
+aggr_plot <- aggr(datamice_final, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(datamice_final), cex.axis=.7, gap=3, ylab=c("Histograma de datos faltantes","Patrón"))
+print(aggr_plot)
 vis_dat(datamice_final)
+
 ```
 
 
