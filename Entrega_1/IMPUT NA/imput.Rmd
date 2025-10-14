@@ -337,6 +337,33 @@ stripplot(imputed_Data, NumOfProducts, pch = 19, xlab = "Imputation number")
 Como hemos comentado anteriormente en el apartado de *exploración de NA* todas las variables tienen exactamente una representación del 30% de valores faltantes. En el panel derecho revela mediante la ayuda de un heatmap el patrón de distribución de estos valores faltantes a lo largo de las observaciones (filas), donde amarillo representa datos presentes y azul oscuro datos ausentes, mostrando que los missings no siguen un patrón completamente aleatorio como se habia supuesto con el *test de little* sino que tienden a agruparse en ciertas regiones del dataset.
 
 ```{r}
+library(mice)
+library(ggplot2)
+
+mice::densityplot(imputed_Data)
+
+mice::densityplot(imputed_Data, ~CreditScore, main = "Densidad de CreditScore imputado")
+
+mice::densityplot(imputed_Data, ~CreditScore + NumOfProducts, 
+                  main = "Densidades de variables imputadas")
+
+# 4️⃣ Opcional: usando ggplot para más personalización
+# Extraer un dataset completo (una imputación)
+completeData <- mice::complete(imputed_Data, 1)
+
+# Convertir a formato largo para ggplot
+library(tidyr)
+data_long <- pivot_longer(completeData, cols = names(completeData), names_to = "Variable", values_to = "Valor")
+
+ggplot(data_long, aes(x = Valor, color = Variable, fill = Variable)) +
+  geom_density(alpha = 0.3) +
+  facet_wrap(~Variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Densidades de variables imputadas (una imputación)")
+```
+
+
+```{r}
 m <- imputed_Data$m 
 
 imp_number <- sample(1:m, 1)
