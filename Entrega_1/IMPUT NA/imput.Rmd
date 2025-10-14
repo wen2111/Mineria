@@ -427,71 +427,108 @@ Vemos como para k=5 se obtienen las mismas conclusiones que con k=3, por tanto n
 Para la implementación práctica de la imputación múltiple, se utilizó el paquete MICE.
 Este método permite generar múltiples datasets completos mediante modelos estadísticos iterativos, manejando tanto variables numéricas como categóricas de manera eficiente.
 
-En primer caso eliminados aquellas variables categoricas para el analisis
-
+A continuación, realizamos la imputación de los valores faltantes para las variables numéricas de manera multivariada (utilizando la información de todas las variables numéricas)
 ```{r}
+
 library(mice)
-library(VIM)
-library(caret)
-library(ggplot2)
-library(tidyr)
+datamice<-data
 
-quiCat <- which(lapply(data, class) %in% c("character", "factor"))
-categories <- names(data)[quiCat]
-data_mice2 <- subset(data, select = setdiff(names(data), categories))
-summary(data_mice2)
-```
+variables_numericas <- names(datamice)[sapply(datamice, is.numeric)]
 
-A continuación, tras mostrar los valores numéricos con summary(), visualizamos los patrones de valores faltantes (NA) en la base de datos.
+variables_no_imputar <- c("ID", "Exited")
 
-```{r}
-mice_plot <- VIM::aggr(data_mice2, col=c('navyblue','yellow'),
-                  numbers=TRUE, sortVars=TRUE,
-                  labels=names(data_mice), cex.axis=.7,
-                  gap=3, ylab=c("Missing data","Pattern"))
-```
+variables_numericas_imputar <- setdiff(variables_numericas, variables_no_imputar)
 
-Como hemos comentado anteriormente en el apartado de *exploración de NA* todas las variables tienen exactamente una representación del 30% de valores faltantes. En el panel derecho revela mediante la ayuda de un heatmap el patrón de distribución de estos valores faltantes a lo largo de las observaciones (filas), donde amarillo representa datos presentes y azul oscuro datos ausentes, mostrando que los missings no siguen un patrón completamente aleatorio como se habia supuesto con el *test de little* sino que tienden a agruparse en ciertas regiones del dataset.
+datamice_imputado <- datamice
 
-A continuación realizamos la imputación de los valores faltanes de manera multivariada
+metodos <- make.method(datamice_imputado)
 
-```{r}
-meth <- make.method(data_mice2)
-for(v in names(data_mice2)){
-  if(v %in% c("ID", "x")){
-    meth[v] <- ""  # No imputar ID ni x
-  } else {
-    meth[v] <- "pmm"  # Imputar numéricas
+metodos[variables_numericas_imputar] <- "pmm"  # Predictive Mean Matching
+
+for(var in names(metodos)) {
+  if(!var %in% variables_numericas_imputar) {
+    metodos[var] <- ""
   }
 }
 
-ini <- mice(data_mice2, maxit = 0, method = meth)
-pred <- ini$predictorMatrix
+pred_mat <- make.predictorMatrix(datamice_imputado)
 
-imputed_Data <- mice(data_mice2, m=5, maxit=50,
-                     method=meth, predictorMatrix=pred, seed=500)
+# Configurar qué variables pueden predecir y ser predecidas
+for (var in names(datamice_imputado)) {
+  if (var %in% variables_numericas_imputar) {
+    # Esta variable numérica puede ser predicha por otras numéricas imputables
+    pred_mat[var, variables_numericas_imputar] <- 1
+    pred_mat[var, var] <- 0  # No usar la variable misma para predecirse
+  }
+  # Para excluir ID y exited de las predictoras y de las imputadas
+  if (var %in% variables_no_imputar | !var %in% variables_numericas) {
+    pred_mat[var, ] <- 0  # No usar esta variable para predecir otras
+    pred_mat[, var] <- 0  # No usar otras variables para predecir esta
+  }
+}
 
-summary(imputed_Data)
+# Realizar la imputación MICE
+imputacion <- mice(
+  datamice_imputado,
+  m = 5,                    
+  maxit = 10,               
+  method = metodos,
+  predictorMatrix = pred_mat,
+  seed = 123,               
+  printFlag = TRUE          
+)
 
+datamice_completo <- complete(imputacion, 1)
+
+datamice_final <- datamice
+datamice_final[variables_numericas_imputar] <- datamice_completo[variables_numericas_imputar]
+vis_dat(datamice_final)
 ```
+
+
 
 ```{r}
-stripplot(imputed_Data, CreditScore, pch=19, xlab="Imputation number")
-stripplot(imputed_Data, NumOfProducts, pch=19, xlab="Imputation number")
-
-# Densidad por variable específica
-densityplot(imputed_Data, ~CreditScore, main="Densidad de CreditScore imputado")
-densityplot(imputed_Data, ~CreditScore + NumOfProducts, main="Densidades de variables imputadas")
+density_before_after(data, datamice_final)
 
 ```
 
-En esta tabla resultado del metodo de MICE se observan con claredad que se han generado 5 datasets imputados como se ha impuesto en el codigo *m=5* usando el método Predictive Mean Matching (*method=pmm*) para las variables numéricas. La **PredictorMatrix** muestra qué variables se utilizan como predictores para imputar los valores faltantes de cada variable, mientras que variables como X e ID no se imputan pero pueden actuar como predictores.
+###COMENTAR GRÁFICO###
 
-En el moemnto de elegir la imputación más considerada nos encontramos que todas las imputaciones 1-5 parecen razonablemente consistentes entre sí, lo que indica estabilidad del método MICE. En ese caso, lo ideal sería combinar las 5 imputaciones mediante pooling de resultados en lugar de elegir una única imputación. 
 
+## Imputación multivariante categórica: KNN
 ```{r}
-completeData <- mice::complete(imputed_Data, sample(1:5, 1))
-```
+data4knn<-datamice_final
+library(cluster)
+k <- 3
+variables_excluir <- c("ID", "Surname", "Exited")
 
+vars_cat <- names(data4knn)[sapply(data4knn, function(x) is.character(x) | is.factor(x))]
+vars_imputar <- setdiff(vars_cat, variables_excluir)
+
+  data4knn_final <- data4knn
+  vars_dist <- setdiff(names(data4knn), variables_excluir)
+  dist_matrix <- as.matrix(daisy(data4knn[vars_dist], metric = "gower"))
+
+  for(var in vars_imputar) {
+    na_idx <- which(is.na(data4knn_final[[var]]))
+    
+    for(i in na_idx) {
+      distancias <- dist_matrix[i, ]
+      distancias[i] <- Inf
+      vecinos <- order(distancias)[1:k]
+      
+      valores <- data4knn_final[[var]][vecinos]
+      valores <- valores[!is.na(valores)]
+      
+      if(length(valores) > 0) {
+        data4knn_final[[var]][i] <- names(sort(table(valores), decreasing = TRUE))[1]
+      }
+    }
+  }
+
+
+vis_dat(data4knn_final)
+colSums(is.na(data4knn_final))
+```
 
 
