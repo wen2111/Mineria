@@ -270,40 +270,79 @@ Este método permite generar múltiples datasets completos mediante modelos esta
 En primer caso eliminados aquellas variables categoricas para el analisis
 
 ```{r}
-data_mice <- data
-quiCat <- which(lapply(data_mice, class) %in% c("character", "factor"))
-categories <- names(data_mice)[quiCat]
+library(mice)
+library(VIM)
+library(caret)
 
-data_mice2 <- subset(data_mice, select = setdiff(names(data_mice), categories))
-summary(data_mice2)
+data_mice <- data  
+
+nzv <- nearZeroVar(data_mice, saveMetrics = TRUE)
+bad_vars <- rownames(nzv[nzv$zeroVar == TRUE | nzv$nzv == TRUE, ])
+
+
+one_level <- names(which(sapply(data_mice, function(x) length(unique(na.omit(x)))) <= 1))
+
+remove_vars <- unique(c(bad_vars, one_level))
+
+if (length(remove_vars) > 0) {
+  data_mice <- subset(data_mice, select = -remove_vars)
+  cat("Variables eliminadas por problemas:", remove_vars, "\n")
+}
+
+
+meth <- make.method(data_mice)
+
+for (v in names(data_mice)) {
+  if (is.numeric(data_mice[[v]])) {
+    meth[v] <- "pmm"              
+  } else if (is.factor(data_mice[[v]])) {
+    if (nlevels(data_mice[[v]]) == 2) {
+      meth[v] <- "logreg"          
+    } else {
+      meth[v] <- "cart"     
+    }
+  }
+}
+
+ini <- mice(data_mice, maxit = 0, method = meth)
+pred <- ini$predictorMatrix
+
+num_vars <- names(data_mice)[sapply(data_mice, is.numeric)]
+pred[,] <- 0
+pred[, num_vars] <- 1  
+imputed_Data <- mice(data_mice, m = 3, maxit = 10, 
+                     method = meth, predictorMatrix = pred, seed = 500)
+
+# Resumen
+summary(imputed_Data)
 ```
 
-A continuación, tras mostrar los valores numéricos con summary(), visualizamos los patrones de valores faltantes (NA) en la base de datos.
+En la tabla resultado del método MICE se observa con claridad que se han generado 3 datasets imputados, tal como se especificó en el código *(m = 3)*, utilizando el método Predictive Mean Matching *(meth = "pmm")* para las variables numéricas. La PredictorMatrix indica qué variables se emplean como predictores para imputar los valores faltantes de cada variable, mientras que variables como X e ID no se imputan, pero pueden actuar como predictores.
+
+Al analizar las imputaciones generadas, se observa que todas son consistentes entre sí, lo que indica que el método MICE es estable. En este contexto, lo recomendable no es seleccionar una única imputación, sino combinar los resultados de todas las imputaciones mediante pooling, obteniendo así estimaciones más robustas y precisas.
 
 ```{r}
-mice_plot <- VIM::aggr(data_mice2, col=c('navyblue','yellow'),
-                  numbers=TRUE, sortVars=TRUE,
-                  labels=names(data_mice), cex.axis=.7,
-                  gap=3, ylab=c("Missing data","Pattern"))
+
+VIM::aggr(data_mice, col=c('navyblue','yellow'),
+          numbers=TRUE, sortVars=TRUE,
+          labels=names(data_mice), cex.axis=.7,
+          gap=3, ylab=c("Missing data","Pattern"))
+
+# Stripplots para variables numéricas
+stripplot(imputed_Data, CreditScore, pch = 19, xlab = "Imputation number")
+stripplot(imputed_Data, NumOfProducts, pch = 19, xlab = "Imputation number")
+
 ```
 
 Como hemos comentado anteriormente en el apartado de *exploración de NA* todas las variables tienen exactamente una representación del 30% de valores faltantes. En el panel derecho revela mediante la ayuda de un heatmap el patrón de distribución de estos valores faltantes a lo largo de las observaciones (filas), donde amarillo representa datos presentes y azul oscuro datos ausentes, mostrando que los missings no siguen un patrón completamente aleatorio como se habia supuesto con el *test de little* sino que tienden a agruparse en ciertas regiones del dataset.
 
-A continuación realizamos la imputación de los valores faltanes de manera multivariada
-
 ```{r}
-imputed_Data <- mice::mice(data_mice2, m=5, maxit = 50, method = 'pmm', seed = 500)
-summary(imputed_Data)
-mice::stripplot(imputed_Data, CreditScore, pch = 19, xlab = "Imputation number")
-mice::stripplot(imputed_Data, NumOfProducts, pch = 19, xlab = "Imputation number")
-```
+m <- imputed_Data$m 
 
-En esta tabla resultado del metodo de MICE se observan con claredad que se han generado 5 datasets imputados como se ha impuesto en el codigo *m=5* usando el método Predictive Mean Matching (*method=pmm*) para las variables numéricas. La **PredictorMatrix** muestra qué variables se utilizan como predictores para imputar los valores faltantes de cada variable, mientras que variables como X e ID no se imputan pero pueden actuar como predictores.
+imp_number <- sample(1:m, 1)
 
-En el moemnto de elegir la imputación más considerada nos encontramos que todas las imputaciones 1-5 parecen razonablemente consistentes entre sí, lo que indica estabilidad del método MICE. En ese caso, lo ideal sería combinar las 5 imputaciones mediante pooling de resultados en lugar de elegir una única imputación. 
-
-```{r}
-completeData <- mice::complete(imputed_Data, sample(1:5, 1))
+completeData <- mice::complete(imputed_Data, imp_number)
+summary(completeData)
 ```
 
 
