@@ -491,6 +491,7 @@ En el moemnto de elegir la imputación más considerada nos encontramos que toda
 
 ```{r}
 completeData <- mice::complete(imputed_Data, sample(1:5, 1))
+summary(completeData)
 ```
 
 
