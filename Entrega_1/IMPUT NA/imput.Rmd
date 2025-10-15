@@ -1,6 +1,6 @@
 ---
 title: "imput na"
-author: "Laura Belmonte"
+author: "Grupo 5"
 date: "2025-10-12"
 output: html_document
 ---
@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r,echo=FALSE, warning=FALSE, message=FALSE}
-load("~/Documents/GitHub/Mineria/DATA/data.RData")
+load("~/GitHub/Mineria/DATA/data.RData")
 library(naniar)
 library(ggplot2)
 library(visdat)
@@ -390,6 +390,88 @@ mass_before_after <- function(before, after, max_categories = 10) {
 }
 ```
 
+#KNN
+
+A continuación probaremos el método KNN para la imputación de NA para las variables categóricas:
+```{r}
+data4knn<-data
+library(cluster)
+k <- 5
+variables_excluir <- c("ID", "Surname", "Exited")
+
+vars_cat <- names(data4knn)[sapply(data4knn, function(x) is.character(x) | is.factor(x))]
+vars_imputar <- setdiff(vars_cat, variables_excluir)
+
+  data4knn_final <- data4knn
+  vars_dist <- setdiff(names(data4knn), variables_excluir)
+  dist_matrix <- as.matrix(daisy(data4knn[vars_dist], metric = "gower"))
+
+  for(var in vars_imputar) {
+    na_idx <- which(is.na(data4knn_final[[var]]))
+    
+    for(i in na_idx) {
+      distancias <- dist_matrix[i, ]
+      distancias[i] <- Inf
+      vecinos <- order(distancias)[1:k]
+      
+      valores <- data4knn_final[[var]][vecinos]
+      valores <- valores[!is.na(valores)]
+      
+      if(length(valores) > 0) {
+        data4knn_final[[var]][i] <- names(sort(table(valores), decreasing = TRUE))[1]
+      }
+    }
+  }
+
+
+vis_dat(data4knn_final)
+colSums(is.na(data4knn_final))
+mass_before_after(data, data4knn_final)
+```
+
+Después de hacer KNN quedan algunos NA en algunas de las variables categóricas. A continuación volveremos a ejecutar knn sobre esta base de datos que ya ha pasado por la imputación numérica y también esta categórica, con el fin de comprobar si desaparecen los NA de nuestro data frame.
+
+
+## 5-NN(2)
+
+```{r}
+data4knn2<-data4knn_final
+library(cluster)
+k <- 5
+variables_excluir <- c("ID", "Surname", "Exited")
+
+vars_cat <- names(data4knn2)[sapply(data4knn2, function(x) is.character(x) | is.factor(x))]
+vars_imputar <- setdiff(vars_cat, variables_excluir)
+
+  data4knn_final2 <- data4knn2
+  vars_dist <- setdiff(names(data4knn2), variables_excluir)
+  dist_matrix <- as.matrix(daisy(data4knn2[vars_dist], metric = "gower"))
+
+  for(var in vars_imputar) {
+    na_idx <- which(is.na(data4knn_final2[[var]]))
+    
+    for(i in na_idx) {
+      distancias <- dist_matrix[i, ]
+      distancias[i] <- Inf
+      vecinos <- order(distancias)[1:k]
+      
+      valores <- data4knn_final[[var]][vecinos]
+      valores <- valores[!is.na(valores)]
+      
+      if(length(valores) > 0) {
+        data4knn_final2[[var]][i] <- names(sort(table(valores), decreasing = TRUE))[1]
+      }
+    }
+  }
+
+
+vis_dat(data4knn_final2)
+colSums(is.na(data4knn_final2))
+mass_before_after(data, data4knn_final2)
+```
+
+Pese a haber solucionado la problemática de los NA, vemos como el ajuste no termina de ser el mejor para la variable Geography, donde hay un desajuste de un 10-15% para la categoría France, que se confunde con las otras dos categorías. Esto podría ser muy perjudicial de cara a una futura modelización, por lo que no podemos validar este método para nuestro caso.
+
 ## Multiple chained Equations (MICE)
 
 Para la implementación práctica de la imputación múltiple, se utilizó el paquete MICE.
@@ -475,89 +557,21 @@ vis_dat(datamice_final)
 
 ```{r}
 density_before_after(data, datamice_final)
-
 ```
-
-###COMENTAR GRÁFICO###
-
-
-## Imputación multivariante categórica: KNN
-```{r}
-data4knn<-datamice_final
-library(cluster)
-k <- 5
-variables_excluir <- c("ID", "Surname", "Exited")
-
-vars_cat <- names(data4knn)[sapply(data4knn, function(x) is.character(x) | is.factor(x))]
-vars_imputar <- setdiff(vars_cat, variables_excluir)
-
-  data4knn_final <- data4knn
-  vars_dist <- setdiff(names(data4knn), variables_excluir)
-  dist_matrix <- as.matrix(daisy(data4knn[vars_dist], metric = "gower"))
-
-  for(var in vars_imputar) {
-    na_idx <- which(is.na(data4knn_final[[var]]))
-    
-    for(i in na_idx) {
-      distancias <- dist_matrix[i, ]
-      distancias[i] <- Inf
-      vecinos <- order(distancias)[1:k]
-      
-      valores <- data4knn_final[[var]][vecinos]
-      valores <- valores[!is.na(valores)]
-      
-      if(length(valores) > 0) {
-        data4knn_final[[var]][i] <- names(sort(table(valores), decreasing = TRUE))[1]
-      }
-    }
-  }
-
-
-vis_dat(data4knn_final)
-colSums(is.na(data4knn_final))
-mass_before_after(data, data4knn_final)
-```
-
-Después de hacer KNN quedan algunos NA en algunas de las variables categóricas. A continuación volveremos a ejecutar knn sobre esta base de datos que ya ha pasado por la imputación numérica y también esta categórica, con el fin de comprobar si desaparecen los NA de nuestro data frame.
-
-
-## 5-NN(2)
 
 ```{r}
-data4knn2<-data4knn_final
-library(cluster)
-k <- 5
-variables_excluir <- c("ID", "Surname", "Exited")
-
-vars_cat <- names(data4knn2)[sapply(data4knn2, function(x) is.character(x) | is.factor(x))]
-vars_imputar <- setdiff(vars_cat, variables_excluir)
-
-  data4knn_final2 <- data4knn2
-  vars_dist <- setdiff(names(data4knn2), variables_excluir)
-  dist_matrix <- as.matrix(daisy(data4knn2[vars_dist], metric = "gower"))
-
-  for(var in vars_imputar) {
-    na_idx <- which(is.na(data4knn_final2[[var]]))
-    
-    for(i in na_idx) {
-      distancias <- dist_matrix[i, ]
-      distancias[i] <- Inf
-      vecinos <- order(distancias)[1:k]
-      
-      valores <- data4knn_final[[var]][vecinos]
-      valores <- valores[!is.na(valores)]
-      
-      if(length(valores) > 0) {
-        data4knn_final2[[var]][i] <- names(sort(table(valores), decreasing = TRUE))[1]
-      }
-    }
-  }
-
-
-vis_dat(data4knn_final2)
-colSums(is.na(data4knn_final2))
-mass_before_after(data, data4knn_final2)
+mass_before_after(data, datamice_final)
 ```
+
+Los resultados son muy buenos tanto para las variables numéricas como para las categóricas: las distribuciones se mantienen muy fieles a las existentes antes de la imputación. Además, todos los NA han sido removidos (solamente quedan los de las variables Surname e ID, que no se pueden imputar y no tienen valor predictivo, además de Exited para el grupo test).
+
+Así pues, guardamos la base de datos final
+```{r}
+data_imputado<-datamice_final
+rm(list = setdiff(ls(), "data_imputado"))
+save(data_imputado, file = "data_imputado.RData")
+```
+
 
 
 
