@@ -1,0 +1,442 @@
+---
+title: "kNN"
+author: "Siling Guo"
+date: "2025-10-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(vcd) # Para la matriz de confusión
+library(caret) # Para la matriz de confusión
+library(pROC) # Para calculos de la ROC
+```
+
+```{r}
+
+###KNN-Clasificador 
+## y~KNN(x1,..xn), se aconseja que las variables numéricas sean escaladas o normalizadas (estandarizada).
+### En este caso está estandarizada.
+data("Caravan") # solo numéricas
+help("Caravan")
+summary(Caravan)
+plot(Caravan$Purchase)
+(table(as.character(Caravan$Purchase))/sum(table(as.character(Caravan$Purchase))))*100
+# Estandarización de la DATA
+Caravan_stand <- scale(Caravan[, -86])
+# División del TRAIN & TEST
+set.seed(1)
+muestra <- sample(1:nrow(Caravan), size = nrow(Caravan)/3)
+train<-data.frame(Caravan_stand[-muestra,])
+test<-data.frame(Caravan_stand[muestra,])
+cl<-Caravan$Purchase[-muestra]  # variable output que queremos pronosticar.
+
+### Estrategia Sencilla
+##Modelo con K=5
+modelo_knn5 <- knn3(train,cl,k=5)
+prediccion<-predict(modelo_knn5,test,type="class")
+matriz_confusion5 <- table(clase_predicha = prediccion, 
+                          clase_real = Caravan[muestra, "Purchase"])
+##Modelo con K=1
+modelo_knn1 <- knn3(train,cl,k=1)
+prediccion<-predict(modelo_knn1,test,type="class")
+matriz_confusion1 <- table(clase_predicha = prediccion, 
+                          clase_real = Caravan[muestra, "Purchase"])
+matriz_confusion5
+matriz_confusion1
+
+accuracy1 <- sum(diag(matriz_confusion1))/length(Caravan[muestra,"Purchase"])
+sprintf("Accuracy1: %.2f%%", accuracy1*100)
+
+accuracy5 <- sum(diag(matriz_confusion5))/length(Caravan[muestra,"Purchase"])
+sprintf("Accuracy5: %.2f%%", accuracy5*100)
+# sencilla, no eficiente!
+
+##### Usando library CARET 
+## procesar data antes de poner en el modelo
+train <- Caravan[-muestra, ]
+test <- Caravan[muestra, ]
+preProcValues <- preProcess(train, method = c("center", "scale"))
+trainTransformed <- predict(preProcValues, train)
+testTransformed <- predict(preProcValues, test)
+ctrl <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
+# sobre el 2/3 hacemos el Cross-validation, sobre el trainTransformed entrenamos el modelo
+# va a hacer 3 veces con cada valor de k, y nos quedamos con el mejor.
+knnModel <- train(
+  Purchase ~ ., 
+  data = trainTransformed, 
+  method = "knn", 
+  trControl = trainControl(method = "cv"), 
+  tuneGrid = data.frame(k = c(3,5,7)))
+# Una vez entrenado el modelo, tenemos que decir con qué modelo nos quedamos
+knnModel
+plot(knnModel)
+
+###############
+#control= trainControl(method="repeatedcv",repeats=3) 
+#knnModel <- train(
+#  Purchase ~ ., 
+#  data = trainTransformed, 
+#  method = "knn", 
+#  trControl = control , 
+#  tuneLength= 20)
+#
+#############
+###control <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
+
+
+best_model<- knn3(
+  Purchase ~ .,
+  data = trainTransformed,
+  k = knnModel$bestTune$k
+)
+best_model
+predictions <- predict(best_model, testTransformed,type = "class")
+# Calculate confusion matrix
+cm <- confusionMatrix(predictions, testTransformed$Purchase)
+cm
+data.frame(Accuracy = cm$overall["Accuracy"],
+           Sensitivity = cm$byClass["Sensitivity"],
+           Specificity = cm$byClass["Specificity"])
+
+roc(testTransformed$Purchase, as.data.frame(predictions)[,"1"],plot=TRUE)
+
+### KNN REGRESSION
+library(MASS)
+data(Boston)
+str(Boston)
+help(Boston)
+##Partición de Data usando library(caret)
+
+set.seed(1)
+inTraining <- createDataPartition(Boston$medv, p = .80, list = FALSE)
+training <- Boston[inTraining,]
+testing  <- Boston[-inTraining,]
+set.seed(1)
+model3 <- train(
+  medv ~ .,
+  data = training,
+  method = 'knn',
+  preProcess = c("center", "scale")
+)
+model3
+###
+test.features = subset(testing, select=-c(medv))
+test.target = subset(testing, select=medv)[,1]
+
+predictions = predict(model3, newdata = test.features)
+# RMSE
+sqrt(mean((test.target - predictions)^2))
+# R2
+cor(test.target, predictions) ^ 2
+### Si agregamos cross-validation
+ctrl <- trainControl(
+  method = "cv",
+  number = 10)
+
+model4 <- train(
+  medv ~ .,
+  data = training,
+  method = 'knn',
+  preProcess = c("center", "scale"),
+  trControl = ctrl
+)
+model4
+test.features = subset(testing, select=-c(medv))
+test.target = subset(testing, select=medv)[,1]
+predictions = predict(model4, newdata = test.features)
+
+# RMSE
+sqrt(mean((test.target - predictions)^2))
+
+##Tunning the model (GridSearch for k)
+set.seed(1)
+
+tuneGrid <- expand.grid(
+  k = seq(5, 9, by = 1)
+)
+
+model5 <- train(
+  medv ~ .,
+  data = training,
+  method = 'knn',
+  preProcess = c("center", "scale"),
+  trControl = ctrl,
+  tuneGrid = tuneGrid
+)
+model5
+plot(model5)
+
+### KNN con Predictores MIXTOS
+# ==============================================================================
+
+## Cargamos los paquetes necesarios
+#install.packages("VIM")
+library(VIM)
+
+
+# Cargamos la base de datos necesarios
+
+dd <- read.table("credscoClean.csv",header = T,sep=";",stringsAsFactors=TRUE)
+summary(dd)
+dd[3310,1]<-"positiu"
+test <- sample(1:nrow(dd), size = nrow(dd)/3)
+dataTrain <- dd[-test,]
+dataTest <- dd[test,]
+
+
+# Creamos unos data frame auxiliares
+aux <- dd
+aux[test, 1] <- NA
+summary(aux)
+
+result <- kNN(aux,k=3,variable="Dictamen") # utilizando Gower, distancia mixta
+table(result$Dictamen[test], dd$Dictamen[test])
+table(result[test,1], dd[test,1])
+
+
+result<-kNN(aux, variable = "Dictamen", weightDist = T)
+table(result$Dictamen[test], dd$Dictamen[test])
+
+
+#regression
+aux<-dd
+aux[test,2]<-NA
+result<-kNN(aux, k=1,variable = "Antiguedad.Trabajo", weightDist = T)
+table(result[test,2], dd[test,2])
+plot(result[test,2], dd[test,2])
+plot(result[test,2]- dd[test,2])
+
+# usa Gower para regresión, puede ser la primera aproximación para nuestro modelo,pero no es el óptimo.
+y<-dd[test,2]
+yp<-result[test,2]
+e1<-(y-yp)^2
+e2<-abs(y-yp)
+summary(e1)
+summary(e2)
+hist(e2)
+plot(density(e2))
+densityplot(e2)
+mse<-sum((y-yp)^2)/(length(y))
+rmse<-sqrt(mse)
+
+
+# transformación de factores mixto (FAMD)
+## Calculate MAPE### Homework
+
+
+###KNN-Clasificador 
+## y~KNN(x1,..xn), se aconseja que las variables numéricas sean escaladas o normalizadas (estandarizada).
+### En este caso está estandarizada.
+data("Caravan") # solo numéricas
+help("Caravan")
+summary(Caravan)
+plot(Caravan$Purchase)
+(table(as.character(Caravan$Purchase))/sum(table(as.character(Caravan$Purchase))))*100
+# Estandarización de la DATA
+Caravan_stand <- scale(Caravan[, -86])
+# División del TRAIN & TEST
+set.seed(1)
+muestra <- sample(1:nrow(Caravan), size = nrow(Caravan)/3)
+train<-data.frame(Caravan_stand[-muestra,])
+test<-data.frame(Caravan_stand[muestra,])
+cl<-Caravan$Purchase[-muestra]  # variable output que queremos pronosticar.
+
+### Estrategia Sencilla
+##Modelo con K=5
+modelo_knn5 <- knn3(train,cl,k=5)
+prediccion<-predict(modelo_knn5,test,type="class")
+matriz_confusion5 <- table(clase_predicha = prediccion, 
+                          clase_real = Caravan[muestra, "Purchase"])
+##Modelo con K=1
+modelo_knn1 <- knn3(train,cl,k=1)
+prediccion<-predict(modelo_knn1,test,type="class")
+matriz_confusion1 <- table(clase_predicha = prediccion, 
+                          clase_real = Caravan[muestra, "Purchase"])
+matriz_confusion5
+matriz_confusion1
+
+accuracy1 <- sum(diag(matriz_confusion1))/length(Caravan[muestra,"Purchase"])
+sprintf("Accuracy1: %.2f%%", accuracy1*100)
+
+accuracy5 <- sum(diag(matriz_confusion5))/length(Caravan[muestra,"Purchase"])
+sprintf("Accuracy5: %.2f%%", accuracy5*100)
+# sencilla, no eficiente!
+
+##### Usando library CARET 
+## procesar data antes de poner en el modelo
+train <- Caravan[-muestra, ]
+test <- Caravan[muestra, ]
+preProcValues <- preProcess(train, method = c("center", "scale"))
+trainTransformed <- predict(preProcValues, train)
+testTransformed <- predict(preProcValues, test)
+ctrl <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
+# sobre el 2/3 hacemos el Cross-validation, sobre el trainTransformed entrenamos el modelo
+# va a hacer 3 veces con cada valor de k, y nos quedamos con el mejor.
+knnModel <- train(
+  Purchase ~ ., 
+  data = trainTransformed, 
+  method = "knn", 
+  trControl = trainControl(method = "cv"), 
+  tuneGrid = data.frame(k = c(3,5,7)))
+# Una vez entrenado el modelo, tenemos que decir con qué modelo nos quedamos
+knnModel
+plot(knnModel)
+
+###############
+#control= trainControl(method="repeatedcv",repeats=3) 
+#knnModel <- train(
+#  Purchase ~ ., 
+#  data = trainTransformed, 
+#  method = "knn", 
+#  trControl = control , 
+#  tuneLength= 20)
+#
+#############
+###control <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
+
+
+best_model<- knn3(
+  Purchase ~ .,
+  data = trainTransformed,
+  k = knnModel$bestTune$k
+)
+best_model
+predictions <- predict(best_model, testTransformed,type = "class")
+# Calculate confusion matrix
+cm <- confusionMatrix(predictions, testTransformed$Purchase)
+cm
+data.frame(Accuracy = cm$overall["Accuracy"],
+           Sensitivity = cm$byClass["Sensitivity"],
+           Specificity = cm$byClass["Specificity"])
+
+roc(testTransformed$Purchase, as.data.frame(predictions)[,"1"],plot=TRUE)
+
+### KNN REGRESSION
+library(MASS)
+data(Boston)
+str(Boston)
+help(Boston)
+##Partición de Data usando library(caret)
+
+set.seed(1)
+inTraining <- createDataPartition(Boston$medv, p = .80, list = FALSE)
+training <- Boston[inTraining,]
+testing  <- Boston[-inTraining,]
+set.seed(1)
+model3 <- train(
+  medv ~ .,
+  data = training,
+  method = 'knn',
+  preProcess = c("center", "scale")
+)
+model3
+###
+test.features = subset(testing, select=-c(medv))
+test.target = subset(testing, select=medv)[,1]
+
+predictions = predict(model3, newdata = test.features)
+# RMSE
+sqrt(mean((test.target - predictions)^2))
+# R2
+cor(test.target, predictions) ^ 2
+### Si agregamos cross-validation
+ctrl <- trainControl(
+  method = "cv",
+  number = 10)
+
+model4 <- train(
+  medv ~ .,
+  data = training,
+  method = 'knn',
+  preProcess = c("center", "scale"),
+  trControl = ctrl
+)
+model4
+test.features = subset(testing, select=-c(medv))
+test.target = subset(testing, select=medv)[,1]
+predictions = predict(model4, newdata = test.features)
+
+# RMSE
+sqrt(mean((test.target - predictions)^2))
+
+##Tunning the model (GridSearch for k)
+set.seed(1)
+
+tuneGrid <- expand.grid(
+  k = seq(5, 9, by = 1)
+)
+
+model5 <- train(
+  medv ~ .,
+  data = training,
+  method = 'knn',
+  preProcess = c("center", "scale"),
+  trControl = ctrl,
+  tuneGrid = tuneGrid
+)
+model5
+plot(model5)
+
+### KNN con Predictores MIXTOS
+# ==============================================================================
+
+## Cargamos los paquetes necesarios
+#install.packages("VIM")
+library(VIM)
+
+
+# Cargamos la base de datos necesarios
+
+dd <- read.table("credscoClean.csv",header = T,sep=";",stringsAsFactors=TRUE)
+summary(dd)
+dd[3310,1]<-"positiu"
+test <- sample(1:nrow(dd), size = nrow(dd)/3)
+dataTrain <- dd[-test,]
+dataTest <- dd[test,]
+
+
+# Creamos unos data frame auxiliares
+aux <- dd
+aux[test, 1] <- NA
+summary(aux)
+
+result <- kNN(aux,k=3,variable="Dictamen") # utilizando Gower, distancia mixta
+table(result$Dictamen[test], dd$Dictamen[test])
+table(result[test,1], dd[test,1])
+
+
+result<-kNN(aux, variable = "Dictamen", weightDist = T)
+table(result$Dictamen[test], dd$Dictamen[test])
+
+
+#regression
+aux<-dd
+aux[test,2]<-NA
+result<-kNN(aux, k=1,variable = "Antiguedad.Trabajo", weightDist = T)
+table(result[test,2], dd[test,2])
+plot(result[test,2], dd[test,2])
+plot(result[test,2]- dd[test,2])
+
+# usa Gower para regresión, puede ser la primera aproximación para nuestro modelo,pero no es el óptimo.
+y<-dd[test,2]
+yp<-result[test,2]
+e1<-(y-yp)^2
+e2<-abs(y-yp)
+summary(e1)
+summary(e2)
+hist(e2)
+plot(density(e2))
+densityplot(e2)
+mse<-sum((y-yp)^2)/(length(y))
+rmse<-sqrt(mse)
+
+
+# transformación de factores mixto (FAMD)
+## Calculate MAPE### Homework
+
+```
