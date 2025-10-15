@@ -202,7 +202,7 @@ for (var in varNum) {
 }
 
 # Misma dsitribución tanto para los que marchan como los que no.
-# Salvo la variable age,creditscore,num of products, Balance,Estimated salary.
+# Salvo la variable age,creditscore,numofproducts, Balance,Estimatedsalary.
 
 # test de medianas
 
