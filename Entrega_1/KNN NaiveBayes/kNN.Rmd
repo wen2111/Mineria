@@ -30,57 +30,35 @@ plot(data$Exited)
 (table(as.character(data$Exited))/sum(table(as.character(data$Exited))))*100
 ```
 
+
 ```{r}
-# 
-is_train <- data$group == "train" & !is.na(data$Exited)
+# División del TRAIN & TEST
+train_df <- data$group == "train" & !is.na(data$Exited)
+muestra <- sample(1:nrow(train_df), size = nrow(trian_df)/3)
+train<-data.frame(train_df[-muestra,])
+test<-data.frame(train_df[muestra,])
+cl<-data$Exited[-muestra]  # variable output que queremos pronosticar.
+```
+
+
+```{r}
 train_df <- data[is_train, , drop = FALSE]
 test_df  <- data[data$group == "test", , drop = FALSE]
 
 # Ordenar y preparar prSummary dentre del caret
-# train_df$Exited <- factor(train_df$Exited, levels = c("1","0"))
+train_df$Exited <- as.character(train_df$Exited)
+train_df$Exited <- ifelse(train_df$Exited %in% c("1", 1), "Yes",
+                          ifelse(train_df$Exited %in% c("0", 0), "No", NA))
 
+train_df$Exited <- factor(train_df$Exited, levels = c("Yes", "No"))
 # Descartar columnas no necesarias
 drops <- c("ID","group")
 # Estandarización de la DATA, solo numéricas
 # data_stand <- scale(train_df[, !(names(train_df) %in% drops)])
 ```
 
-```{r}
-# División del TRAIN & TEST
-set.seed(1)
-muestra <- sample(1:nrow(data), size = nrow(data)/3)
-train<-data.frame(data_stand[-muestra,])
-test<-data.frame(data_stand[muestra,])
-cl<-data$Exited[-muestra]  # variable output que queremos pronosticar.
-```
 
 
-# Estrategia Sencilla
-
-## Modelo con K=5
-```{r}
-modelo_knn5 <- knn3(train,cl,k=5)
-prediccion<-predict(modelo_knn5,test,type="class")
-matriz_confusion5 <- table(clase_predicha = prediccion, 
-                          clase_real = data[muestra, "Exited"])
-```
-
-## Modelo con K=1
-```{r}
-modelo_knn1 <- knn3(train,cl,k=1)
-prediccion<-predict(modelo_knn1,test,type="class")
-matriz_confusion1 <- table(clase_predicha = prediccion, 
-                          clase_real = data[muestra, "Exited"])
-matriz_confusion5
-matriz_confusion1
-
-accuracy1 <- sum(diag(matriz_confusion1))/length(data[muestra,"Exited"])
-sprintf("Accuracy1: %.2f%%", accuracy1*100)
-
-accuracy5 <- sum(diag(matriz_confusion5))/length(data[muestra,"Exited"])
-sprintf("Accuracy5: %.2f%%", accuracy5*100)
-# sencilla, no eficiente!
-```
 
 # Usando library CARET 
 ```{r}
@@ -88,7 +66,8 @@ sprintf("Accuracy5: %.2f%%", accuracy5*100)
 is_train <- data$group == "train" & !is.na(data$Exited)
 train_df <- data[is_train, , drop = FALSE]
 test_df  <- data[data$group == "test", , drop = FALSE]
-train_df$Exited <- factor(train_df$Exited, levels = c("1","0"))
+train_df$Exited <- factor(train_df$Exited, levels = c("0","1"))
+levels(train_df$Exited) <- c("No","Yes")
 
 drops <- c("ID","group","Surname")
 train_df <- train_df[, setdiff(names(train_df), drops), drop = FALSE]
@@ -102,10 +81,13 @@ preProcValues <- preProcess(train_df, method = c("center", "scale"))
 
 trainTransformed <- predict(preProcValues, train_df)
 testTransformed <- predict(preProcValues, test_df)
+
+
 ctrl <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
 
 # sobre el 2/3 hacemos el Cross-validation, sobre el trainTransformed entrenamos el modelo
 # va a hacer 3 veces con cada valor de k, y nos quedamos con el mejor.
+
 knnModel <- train(
   Exited ~ ., 
   data = trainTransformed, 
@@ -127,9 +109,6 @@ ctrl_none <- ctrl_base
 ctrl_down <- ctrl_base; ctrl_down$sampling <- "down"
 ctrl_up   <- ctrl_base; ctrl_up$sampling   <- "up"
 
-
-trainTransformed$Exited <- factor(ifelse(trainTransformed$Exited == "1","Yes","No"),
-                                  levels = c("Yes","No"))
 
 knn_none <- train(Exited ~ ., data=trainTransformed, method="knn",
                   trControl=ctrl_none, tuneGrid=data.frame(k=c(3,5,7)),
@@ -222,7 +201,6 @@ predictions = predict(model4, newdata = test.features)
 ```
 
 # RMSE
-
 ```{r}
 sqrt(mean((test.target - predictions)^2))
 
