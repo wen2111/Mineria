@@ -10,34 +10,168 @@ knitr::opts_chunk$set(echo = TRUE)
 library(vcd) # Para la matriz de confusión
 library(caret) # Para la matriz de confusión
 library(pROC) # Para calculos de la ROC
+library(caret)
+library(class)
 ```
 
 
 ```{r}
-str(data_imputado)
-str(data_reducida)
 str(data_transformada)
 ```
 
 ## KNN-Clasificador 
 ```{r}
-set.seed(123)
-## y~KNN(x1,..xn), se aconseja que las variables numéricas sean escaladas o normalizadas (estandarizada).
-### En este caso está estandarizada.
-data <- data_transformada # data <- data_reducida
+data <- data_transformada
 summary(data)
+```
+
+```{r}
 plot(data$Exited)
 (table(as.character(data$Exited))/sum(table(as.character(data$Exited))))*100
+```
+En la base de datos data_transformada, hay dos parte de datos, test original y train original. Además, es importante tener en cuenta la base de datos es desbalanceada, en las observaciones donde no sean NA, hay 79,28% No abandona el banco, y 20,71% sí abandona el banco. A la hora de hacer kNN test, se conviene aplicar los métodos Undersampling, Oversampling, ROSE y SMOTE.
+
+## División del TRAIN & TEST
+```{r}
+set.seed(123)
+train_df <- data[data$group == "train" & !is.na(data$Exited), ]
+train_df<- subset(train_df, select = -c(ID, Surname, group))
+train_df$Exited <- factor(train_df$Exited, levels = c("1","0"))
+
+
+ind_col <- which(names(train_df) == "Exited") # columna de indicador
+default_idx <- createDataPartition(train_df$Exited, p = 0.7, list = FALSE) # 70% para entrenamiento
+
+X_trainC <- train_df[default_idx, ]
+X_testC  <- train_df[-default_idx, ]
+
+y_testC <- X_testC[, ind_col]
+X_testC <- X_testC[, -ind_col]
+
+# muestra <- sample(1:nrow(train_df), size = nrow(train_df)/3)
+# train<-data.frame(train_df[-muestra,])
+# test<-data.frame(train_df[muestra,])
+# cl<-data$Exited[-muestra]  # variable output que queremos pronosticar.
+```
+
+```{r}
+library(caret)
+
+# Crear preprocesador para centrado y escalado
+preproc <- preProcess(X_trainC, method = c("center", "scale"))
+
+# Aplicar transformación
+X_trainC <- predict(preproc, X_trainC)
+X_testC <- predict(preproc, X_testC)
+```
+
+```{r}
+y_trainC <- factor(ifelse(as.character(X_trainC$Exited) == "1", "Yes", "No"), levels = c("Yes","No"))
+y_testC  <- factor(ifelse(as.character(y_testC) == "1", "Yes", "No"), levels = levels(y_trainC))
+
+X_train_feat <- X_trainC[, setdiff(names(X_trainC), "Exited")]
+X_test_feat  <- X_testC
+
+# Convertir variables categóricas en dummies
+dmy <- dummyVars(~ ., data = X_train_feat, fullRank = TRUE)
+train_num <- data.frame(predict(dmy, newdata = X_train_feat))
+test_num  <- data.frame(predict(dmy, newdata = X_test_feat))
+
+# Escalar las variables numéricas
+preproc <- preProcess(train_num, method = c("center","scale"))
+trainScaled <- predict(preproc, train_num)
+testScaled  <- predict(preproc, test_num)
+
+# kNN CV
+set.seed(123)
+ctrl <- trainControl(method = "cv", number = 5, classProbs = TRUE)
+entrenamiento <- train(
+  x = trainScaled,
+  y = y_trainC,
+  method = "knn",
+  trControl = ctrl,
+  tuneGrid = expand.grid(k = seq(1, 20, by = 1))
+)
+entrenamiento
+entrenamiento$modelType
+```
+Se observa que al aumentar k de 1 a 20, el Accuracy augmenta de 0,71 a 0,80, mientras que la veolocidad del crecimiento ya se ha moderado bastante a partir de k=17.
+El valor de kappa ha estado bajo con todas las k, entre 0,12 y 0,16. Se afirma que la capacidad de classificar los dos tipos (yes exited y no exited) es muy bajo, teniedo en cuenta que se esta trabajando con una base de datos desbalanceada.
+
+```{r}
+get_best_result = function(caret_fit) {
+  best = which(rownames(caret_fit$results) == rownames(caret_fit$bestTune))
+  best_result = caret_fit$results[best, ]
+  rownames(best_result) = NULL
+  best_result
+}
+head(entrenamiento$results, 5)
 ```
 
 
 ```{r}
-# División del TRAIN & TEST
-train_df <- data$group == "train" & !is.na(data$Exited)
-muestra <- sample(1:nrow(train_df), size = nrow(trian_df)/3)
-train<-data.frame(train_df[-muestra,])
-test<-data.frame(train_df[muestra,])
-cl<-data$Exited[-muestra]  # variable output que queremos pronosticar.
+plot(entrenamiento)
+```
+
+```{r}
+pred_label <- predict(entrenamiento, newdata = testScaled)
+cm <- confusionMatrix(pred_label, y_testC, positive = "Yes")
+cm
+```
+El modelo kNN obtuve la exactitud global (Accuracy) del 80,81%, 
+lo que indica que acierta aproximadamente 80,81% del conjunto de prueba. Pero es trivial tener en cuenta el desequilibrio entre "Yes" (clientes abandonan) y "No" clientes permanencen.
+- Se puede ver que la Sensibilidad = 0,1471, muestra que el modelo solo ha podido identificar correctamente un 14,71% de los clientes que abandonan. La gran mayoría de los casos no han sido detectados.
+- Debido el sesgo havia la clase moyoritaria "No", la Especificidad es muy alta,  un  98,07%.
+- La precisión positiva (Pos Pred Value) es 0,6667 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 66,67% realmente abandonaron.
+El índice Kappa es 0,1796 confirma que el acuerdo del modelo con las etiquetas reales es solo ligeramente meor que el azar. Es muy bajo para ser un modelo robusto.
+El modelo tiene exactitud balanceada 0,56, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
+
+Para mejorar este rendimeinto, sería bueno aplicar técnicas como Undersampling, Oversampling, SMOTE, ROSE.
+
+
+
+
+# Naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+set.seed(123)
+k_to_try = 1:100
+err_k = rep(x = 0, times = length(k_to_try))
+
+for (i in seq_along(k_to_try)) {
+  pred <- knn(train = X_trainC, 
+             test  = X_testC, 
+             cl    = y_trainC, 
+             k     = k_to_try[i], 
+             prob = T)
+  err_k[i] <- calc_class_err(y_testC, pred)
+}
+```
+
+```{r}
+# plot error vs choice of k
+plot(err_k, type = "b", col = "dodgerblue", cex = 1, pch = 20, 
+     xlab = "k, number of neighbors", ylab = "classification error",
+     main = "(Test) Error Rate vs Neighbors")
+# add line for min error seen
+abline(h = min(err_k), col = "darkorange", lty = 3)
+# add line for minority prevalence in test set
+abline(h = mean(y_test == "Yes"), col = "grey", lty = 2)
 ```
 
 
@@ -56,8 +190,6 @@ drops <- c("ID","group")
 # Estandarización de la DATA, solo numéricas
 # data_stand <- scale(train_df[, !(names(train_df) %in% drops)])
 ```
-
-
 
 
 # Usando library CARET 
