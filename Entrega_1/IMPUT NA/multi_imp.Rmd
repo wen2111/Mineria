@@ -1,0 +1,298 @@
+---
+title: "outliers comparación"
+author: "Laura Belmonte"
+date: "2025-10-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Hasta ahora hemos analizado cada variable por separado utilizando diferentes métodos para detectar outliers segun las propiedades individuales de cada una. 
+
+No obstante, a veces los outliers aparecen en la combinación de varias variables. Por ello, a continuación estudiaremos estos valores atípicos mediante métodos multivariante.
+
+Para detectaros, emplearemos métodos como la distancia de Mahalanobis, así como algoritmos más avanzados de detección de anomalías basados en la densidad, tales como el Local Outlier Factor.
+
+## Distancia de Mahalanobis 
+
+Calculamos la distancia de Mahalanobis para identificar observaciones alejadas del centro multivariante de los datos (medias de cada variable). Mediante un histograma y gráfico de densidad visualizaremos la distribución de dichas distancias y detectaremos posibles outliers.
+
+```{r}
+load("~/Documents/2025-2026/mineria de datos/data.RData")
+dades <- data[, varNum]
+for(v in varNum){
+  dades[[v]] <- as.numeric(as.character(dades[[v]]))
+}
+
+dades2 <- na.omit(dades)
+
+distancia_mahalanobis <- mahalanobis(
+  dades2,
+  center = colMeans(dades2),
+  cov    = cov(dades2)
+)
+#Graficamos el plot de la densidad de las distancias
+plot(density(distancia_mahalanobis))
+```
+
+Se observa que la gran mayoría de los clientes están dentro de un rango normal, no obstante, existe un grupo pequeño con distancias muy elevadas que se pueden considerar claramente outliers. 
+
+La cola larga a la derecha es la señal principal de anomalías.
+
+A continuación se muestran aquellos individuos de la bbdd que quedan sobre del 99% de la distribución $\chi^2$
+
+```{r}
+cutoff <- qchisq(p = 0.99, df = ncol(dades2))
+dades2[distancia_mahalanobis>cutoff, ]
+```
+
+Identificamos varios valores que podrían considerarse atípicos en comparación con el resto de los datos. Por ejemplo, la edad de 84 años resulta inusualmente elevada dentro de una población bancaria típica. De manera similar, saldos muy altos como 134,096.53 o 120,656.86 contrastan marcadamente con aquellos clientes que incluso mantienen un balance de cero. Además, la frecuencia y el valor promedio de las transacciones varían de forma considerable entre los clientes, lo que sugiere la existencia de perfiles financieros extremos y diferenciados del comportamiento general.
+
+Dentro de los registros analizados destaca el individuo 8938. A pesar de llevar 9 años como cliente y disponer de un ingreso estable coherente con un perfil de persona jubilada, su historial bancario aparece prácticamente vacío. No obstante, el número de transacciones y el importe promedio de las mismas resultan inusualmente elevados, lo que sugiere un comportamiento atípico que merece una revisión más detallada.
+
+Una vez calculadas las distancias, y ordenadas en orden descendente, identificamos fácilmente aquellas con valores más extremos.
+
+```{r}
+dades2 <- dades2[order(distancia_mahalanobis, decreasing = TRUE),]
+par(mfrow=c(1,1))
+hist(distancia_mahalanobis, 
+     main = "Histograma de distancias de Mahalanobis", 
+     xlab = "Distancia de Mahalanobis",
+     col = "lightblue", 
+     breaks = 30)
+abline(v = cutoff, col = "red", lwd = 2)
+```
+
+El histograma de la distancia de Mahalanobis muestra que la mayoría de las observaciones tienen valores bajos (entre 5 y 15), mientras que en la cola de la derecha, unas pocas presentan distancias mucho más altas (superiores a 25). En el gráfico se indica el punto que corresponde al 99 % de la distribución $\chi^2$.
+
+A continuación, para estudiar la relación entre variables hacemos un utilizamos un gráfico scatterplot 3D para observar los outliers multivariantes. Para ello elegimos las variables: Age, Balance, EstimatedSalary.
+
+El gráfico 3D muestra la relación entre edad, balance y salario estimado, donde los puntos negros representan los valores normales y los rojos indican outliers detectados mediante la distancia de Mahalanobis; estas anomalías corresponden a individuos con combinaciones atípicas de variables que se alejan del patrón general de la muestra.
+
+```{r}
+library(scatterplot3d)
+library(plotly)
+umbral <- cutoff
+
+# Crear columna de outlier
+dades2$outlier <- (distancia_mahalanobis > umbral)
+
+# Colores para outliers vs normales
+dades2$color <- ifelse(dades2$outlier, "red", "black")
+
+scatterplot3d(dades2[, "Age"], 
+              dades2[, "Balance"], 
+              dades2[, "EstimatedSalary"],
+              color = dades2$color,
+              pch = 19,
+              main = "Outliers según distancia de Mahalanobis")
+
+fig <- plot_ly(dades2, 
+               x = ~Age, 
+               y = ~Balance, 
+               z = ~EstimatedSalary,
+               color = ~outlier,
+               colors = c("black", "red"),
+               marker = list(size = 4)) %>%
+       add_markers() %>%
+       layout(title = "Outliers multivariantes (Mahalanobis)")
+fig
+
+(who <- which(dades2[, "outlier"] == TRUE))
+```
+
+
+## Local outlier Factor
+
+El método Local Outlier Factor (LOF) evalúa si un punto de los datos es un valor atípico comparando su densidad local con la de sus vecinos más cercanos. La idea central consiste en que, si un punto presenta una densidad significativamente menor que la de su entorno, se considera una anomalía o outlier.
+
+```{r}
+library(Rlof)
+library(dplyr)
+library(rgl)  # para gráficos 3D
+
+# Selección de tres variables numéricas
+dades_sel <- dades2[, c("Age", "Balance", "EstimatedSalary")]
+
+# Calcular LOF usando Rlof
+outlier.scores <- Rlof::lof(dades_sel, k = 5)
+
+# Ver distribución de los scores
+plot(density(outlier.scores), main = "Distribución LOF (k=5)")
+
+# Identificar los 5 principales outliers
+outliers <- order(outlier.scores, decreasing = TRUE)[1:5]
+
+# Etiquetas para un biplot PCA
+n <- nrow(dades_sel)
+labels <- rep(".", n)
+labels[outliers] <- "+"
+biplot(prcomp(dades_sel), cex = .8, xlabs = labels)
+
+# Marcar outliers en pares de variables
+pch <- rep(".", n)
+pch[outliers] <- "+"
+col <- rep("black", n)
+col[outliers] <- "red"
+pairs(dades_sel, pch = pch, col = col, main = "Outliers detectados por LOF")
+
+# Gráfico 3D
+plot3d(dades_sel[,1], dades_sel[,2], dades_sel[,3],
+       type = "s", col = col, size = 1,
+       xlab = "Age", ylab = "Balance", zlab = "EstimatedSalary")
+
+```
+
+Se detectan clientes con comportamientos inusuales, como alguien muy joven con balance muy alto, personas con salarios estimados extremadamente diferentes al resto, o combinaciones de características que no siguen el patrón típico de la mayoría de observaciones.
+
+
+Ahora, con el objetivo de comparar los outliers identificados en la base de datos sin imputar con aquellos presentes en la base de datos imputada mediante el método MICE, se procede a analizar ambas versiones del conjunto de datos para evaluar el impacto del proceso de imputación sobre los valores atípicos.
+
+```{r}
+load("~/Documents/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+dades_imp<-data_imputado
+summary(dades_imp)
+```
+# Outliers dades imputades: 
+
+## Mahalanobis
+
+```{r}
+data_imp <- dades_imp[, varNum]
+for(v in varNum){
+  data_imp[[v]] <- as.numeric(as.character( data_imp[[v]]))
+}
+
+data_imp2 <- na.omit(data_imp)
+
+distancia_mahalanobis_imp <- mahalanobis(
+  data_imp2,
+  center = colMeans(data_imp2),
+  cov    = cov(data_imp2)
+)
+#Graficamos el plot de la densidad de las distancias
+plot(density(distancia_mahalanobis_imp))
+```
+La mayoría de las observaciones se encuentran concentradas en el pico entre 0-15 indicando que están cerca del centro multivariado de los datos y siguen el patrón esperado. 
+
+No obstante, la cola extendida hacia la derecha indica la presencia de outliers multivariados o casos atípicos que se desvían significativamente del comportamiento general del conjunto de datos.
+Estos valores altos de distancia Mahalanobis podrian sugerir observaciones que podrían requerir atención especial: pueden ser errores de medición, casos excepcionales genuinos, o puntos influyentes que podrían afectar análisis estadísticos posteriores como regresiones o análisis discriminantes.
+
+**Comparacion**: Las respuestas son similares con la base de datos cruda. 
+
+
+```{r}
+cutoff_imp <- qchisq(p = 0.99, df = ncol(data_imp2))
+data_imp2[distancia_mahalanobis_imp>cutoff_imp, ]
+```
+En comparación con la anterior base de datos, nos salen nuevos outliers i con más cantidad, no obstante aquellos que eran outliers en la anterior caso, siguen siendolo en este caso. 
+
+Una vez calculadas las distancias, y ordenadas en orden descendente, identificamos fácilmente aquellas con valores más extremos.
+
+```{r}
+data_imp2 <- data_imp2[order(distancia_mahalanobis_imp, decreasing = TRUE),]
+par(mfrow=c(1,1))
+hist(distancia_mahalanobis_imp, 
+     main = "Histograma de distancias de Mahalanobis", 
+     xlab = "Distancia de Mahalanobis",
+     col = "lightblue", 
+     breaks = 30)
+abline(v = cutoff_imp, col = "red", lwd = 2)
+```
+Se confirma lo conmentado anteriormente  que la gran mayoría de las observaciones (~6000-7000) tienen distancias Mahalanobis bajas (concentradas entre 0-15), indicando que se ajustan bien al patrón multivariado general de los datos.
+
+La línea roja vertical marca un umbral crítico para identificar outliers multivariados: las observaciones a la derecha de esta línea son casos atípicos que se desvían significativamente y requieren investigación o tratamiento especial en el análisis.
+
+**Comparación**
+El caso de los valores imputados se considera mejor para visualizar esta distribución de distancias Mahalanobis.
+
+El *crudo* hace uso de barras más anchas y menos intervalos, lo que facilita ver el patrón general de la distribución. El imputado tiene demasiadas barras estrechas que fragmentan la visualización, dificultando la interpretación del patrón global y haciendo que la distribución parezca más irregular de lo que realmente es. 
+
+
+El gráfico 3D muestra la relación entre edad, balance y salario estimado, donde los puntos negros representan los valores normales y los rojos indican outliers detectados mediante la distancia de Mahalanobis; estas anomalías corresponden a individuos con combinaciones atípicas de variables que se alejan del patrón general de la muestra.
+
+```{r}
+library(scatterplot3d)
+library(plotly)
+umbral_i <- cutoff_imp
+
+# Crear columna de outlier
+data_imp2$outlier <- (distancia_mahalanobis_imp > umbral_i)
+
+# Colores para outliers vs normales
+data_imp2$color <- ifelse(data_imp2$outlier, "red", "black")
+
+scatterplot3d(data_imp2[, "Age"], 
+              data_imp2[, "Balance"], 
+              data_imp2[, "EstimatedSalary"],
+              color = data_imp2$color,
+              pch = 19,
+              main = "Outliers según distancia de Mahalanobis")
+
+fig <- plot_ly(data_imp2, 
+               x = ~Age, 
+               y = ~Balance, 
+               z = ~EstimatedSalary,
+               color = ~outlier,
+               colors = c("black", "red"),
+               marker = list(size = 4)) %>%
+       add_markers() %>%
+       layout(title = "Outliers multivariantes (Mahalanobis)")
+fig
+
+(who <- which(data_imp2[, "outlier"] == TRUE))
+```
+Los outliers se distribuyen a lo largo del espacio tridimensional, mostrando que son casos atípicos en la combinación de estas tres variables, no necesariamente extremos en una sola dimensión. Esto demuestra la ventaja de la distancia Mahalanobis para detectar anomalías multivariadas que no serían evidentes analizando cada variable por separado.
+
+Se observa que no hay muchos valores que se consideran outliers. 
+
+## Local outlier Factor
+
+El método Local Outlier Factor (LOF) evalúa si un punto de los datos es un valor atípico comparando su densidad local con la de sus vecinos más cercanos. La idea central consiste en que, si un punto presenta una densidad significativamente menor que la de su entorno, se considera una anomalía o outlier.
+
+```{r}
+library(Rlof)
+library(dplyr)
+library(rgl)  # para gráficos 3D
+
+# Selección de tres variables numéricas
+dades_sel_imp <- data_imp2[, c("Age", "Balance", "EstimatedSalary")]
+
+# Calcular LOF usando Rlof
+outlier.scores_imp <- Rlof::lof(dades_sel_imp, k = 5)
+
+# Ver distribución de los scores
+plot(density(outlier.scores_imp), main = "Distribución LOF (k=5)")
+
+# Identificar los 5 principales outliers
+outliers_imp <- order(outlier.scores_imp, decreasing = TRUE)[1:5]
+
+# Etiquetas para un biplot PCA
+n <- nrow(dades_sel_imp)
+labels <- rep(".", n)
+labels[outliers_imp] <- "+"
+biplot(prcomp(dades_sel_imp), cex = .8, xlabs = labels)
+
+# Marcar outliers en pares de variables
+pch <- rep(".", n)
+pch[outliers_imp] <- "+"
+col <- rep("black", n)
+col[outliers_imp] <- "red"
+pairs(dades_sel_imp, pch = pch, col = col, main = "Outliers detectados por LOF")
+
+# En plot3d() - línea con error:
+plot3d(dades_sel_imp[,1], dades_sel_imp[,2], dades_sel_imp[,3],
+       type = "s", col = col, size = 1,
+       xlab = "Age", ylab = "Balance", zlab = "EstimatedSalary")
+```
+Se detectan clientes con comportamientos inusuales, como alguien muy joven con balance muy alto, personas con salarios estimados extremadamente diferentes al resto, o combinaciones de características que no siguen el patrón típico de la mayoría de observaciones.
+
+
+
+
