@@ -12,10 +12,11 @@ library(caret) # Para la matriz de confusión
 library(pROC) # Para calculos de la ROC
 library(caret)
 library(class)
+load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 ```
 
-
 ```{r}
+# load("../Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 str(data_transformada)
 ```
 
@@ -99,6 +100,11 @@ Se observa que al aumentar k de 1 a 20, el Accuracy augmenta de 0,71 a 0,80, mie
 El valor de kappa ha estado bajo con todas las k, entre 0,12 y 0,16. Se afirma que la capacidad de classificar los dos tipos (yes exited y no exited) es muy bajo, teniedo en cuenta que se esta trabajando con una base de datos desbalanceada.
 
 ```{r}
+pred_prob  <- predict(entrenamiento, newdata = testScaled, type = "prob")
+head(pred_prob, 10)
+```
+
+```{r}
 get_best_result = function(caret_fit) {
   best = which(rownames(caret_fit$results) == rownames(caret_fit$bestTune))
   best_result = caret_fit$results[best, ]
@@ -126,24 +132,183 @@ lo que indica que acierta aproximadamente 80,81% del conjunto de prueba. Pero es
 El índice Kappa es 0,1796 confirma que el acuerdo del modelo con las etiquetas reales es solo ligeramente meor que el azar. Es muy bajo para ser un modelo robusto.
 El modelo tiene exactitud balanceada 0,56, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
 
-Para mejorar este rendimeinto, sería bueno aplicar técnicas como Undersampling, Oversampling, SMOTE, ROSE.
+Considerando que no es una base de datos extremadamente grande, para mejorar este rendimeinto, sería bueno aplicar técnicas como Undersampling, Oversampling, SMOTE, ROSE.
 
 
 
+# kNN con Oversampling
 
-# Naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+```{r}
+set.seed(123)
+ctrl_up <- trainControl(
+  method = "cv", number = 5,
+  classProbs = TRUE,
+  sampling = "up", # oversampling dentro de cada fold
+  summaryFunction = twoClassSummary
+)
+
+fit_knn_up <- train(
+  x = trainScaled, y = y_trainC,
+  method = "knn",
+  metric = "ROC",  # optimiza por AUC, mejor para desbalanceo
+  trControl = ctrl_up,
+  tuneGrid = expand.grid(k = seq(1, 21, by = 2))
+)
+
+# Predicción
+pred_prob_up <- predict(fit_knn_up, newdata = testScaled, type = "prob")
+pred_lab_up  <- predict(fit_knn_up, newdata = testScaled)
+
+# Evaluación (umbral 0.5)
+cm_up <- confusionMatrix(pred_lab_up, y_testC, positive = "Yes")
+cm_up
+
+# umbral0.30 (para subir Sensitivity)
+tau <- 0.30
+pred_tau <- factor(ifelse(pred_prob_up$Yes >= tau, "Yes", "No"), levels = levels(y_testC))
+confusionMatrix(pred_tau, y_testC, positive = "Yes")
+
+```
+# kNN con Oversampling usando Random Forest
+
+```{r}
+# install.packages("randomForest")
+library(randomForest)
+
+set.seed(123)
+# y split con default_idx
+X_train_rf <- train_df[default_idx, ]
+X_test_rf  <- train_df[-default_idx, ]
+
+# Objetivo con niveles válidos
+X_train_rf$Exited <- factor(ifelse(as.character(X_train_rf$Exited) == "1", "Yes", "No"), levels = c("Yes","No"))
+y_test_rf <- factor(ifelse(as.character(y_testC) == "1", "Yes", "No"), levels = c("Yes","No"))
+
+# Asegura que todos los predictores no sean character:
+chr_cols <- sapply(X_train_rf, is.character)
+X_train_rf[chr_cols] <- lapply(X_train_rf[chr_cols], factor)
+X_test_rf[ chr_cols] <- lapply(X_test_rf[ chr_cols], factor)
+
+ctrl_up <- trainControl(
+  method = "repeatedcv", number = 10, repeats = 10,
+  verboseIter = FALSE,
+  classProbs = TRUE,
+  sampling = "up",                # ← oversampling
+  summaryFunction = twoClassSummary
+)
+
+# # Entrenamiento RF
+# model_rf_over <- train(
+#   Exited ~ ., data = X_train_rf,
+#   method = "rf",
+#   preProcess = NULL, # RF no necesita center ni scale
+#   trControl = ctrl_up,
+#   metric = "ROC"
+# )
+# 
+# # Probabilidades sobre el test (en crudo)
+# prob_rf <- predict(model_rf_over, newdata = X_test_rf, type = "prob")
+# head(prob_rf)
+# 
+# # Etiquetas por defecto (umbral 0.5)
+# pred_rf <- predict(model_rf_over, newdata = X_test_rf)
+# 
+# # Matriz de confusión
+# cm_over <- confusionMatrix(pred_rf, y_test_rf, positive = "Yes")
+# cm_over
+# 
+# # umbral 0.30
+# tau <- 0.30
+# pred_rf_tau <- factor(ifelse(prob_rf$Yes >= tau, "Yes", "No"), levels = levels(y_test_rf))
+# confusionMatrix(pred_rf_tau, y_test_rf, positive = "Yes")
+
+```
+
+# kNN con randomdorest más rápido (ranger)
+```{r}
+ctrl_fast <- trainControl(
+  method = "cv", number = 5,
+  classProbs = TRUE,
+  sampling = "up",
+  summaryFunction = twoClassSummary,
+  savePredictions = "final"
+)
+
+fit_rf_fast <- train(
+  Exited ~ ., data = X_train_rf,
+  method   = "ranger",
+  trControl= ctrl_fast,
+  metric   = "ROC",
+  tuneLength = 5, # que el caret busque 5 valores de mtry
+  importance = "none", 
+  num.trees = 300 # menos árboles para mayor velocidad
+)
+fit_rf_fast
+```
+
+```{r}
+prob_rf <- predict(fit_rf_fast, newdata = X_test_rf, type = "prob")
+pred_rf <- predict(fit_rf_fast, newdata = X_test_rf)
+
+pred_rf<- factor(pred_rf, levels = c("Yes","No"))
+X_test_rf$Exited <- factor(ifelse(as.character(X_test_rf$Exited) == "1", "Yes", "No"),
+                           levels = c("Yes","No"))
+
+cm_rf <- confusionMatrix(pred_rf, X_test_rf$Exited, positive = "Yes")
+cm_rf
 
 
+library(pROC)
+roc_rf <- roc(response = X_test_rf$Exited, predictor = prob_rf$Yes, levels = c("No","Yes"))
+plot(roc_rf, col="blue", main="ROC - Random Forest con Oversampling")
+auc(roc_rf)
+```
+
+```{r}
+levels(pred_rf)
+levels(X_test_rf$Exited)
+table(pred_rf, useNA="ifany")
+table(X_test_rf$Exited, useNA="ifany")
+```
+# ROSE
+```{r}
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "rose")
+
+set.seed(42)
+model_rf_rose <- caret::train(classes ~ .,
+                              data = train_data,
+                              method = "rf",
+                              preProcess = c("scale", "center"),
+                              trControl = ctrl)
+```
+
+```{r}
+final_rose <- data.frame(actual = test_data$classes,
+                         predict(model_rf_rose, newdata = test_data, type = "prob"))
+final_rose$predict <- ifelse(final_rose$benign > 0.5, "benign", "malignant")
+```
+
+```{r}
+cm_rose <- confusionMatrix(final_rose$predict, test_data$classes)
+```
 
 
+# SMOTE
+```{r}
+# install.packages("themis")
+library(themis)
+ctrl_smote <- ctrl_fast; ctrl_smote$sampling <- "smote"
+fit_rf_smote <- train(Exited~., data=X_train_rf, method="ranger",
+                      trControl=ctrl_smote, metric="ROC",
+                      tuneGrid=grid, num.trees=300)
 
+```
 
-
-
-
-
-
-
+# HASTA AQUÍ
 
 
 
@@ -192,96 +357,55 @@ drops <- c("ID","group")
 ```
 
 
-# Usando library CARET 
 ```{r}
-## procesar data antes de poner en el modelo
-is_train <- data$group == "train" & !is.na(data$Exited)
-train_df <- data[is_train, , drop = FALSE]
-test_df  <- data[data$group == "test", , drop = FALSE]
-train_df$Exited <- factor(train_df$Exited, levels = c("0","1"))
-levels(train_df$Exited) <- c("No","Yes")
-
-drops <- c("ID","group","Surname")
-train_df <- train_df[, setdiff(names(train_df), drops), drop = FALSE]
-test_df  <- test_df [, intersect(names(test_df), names(train_df)), drop = FALSE]
+# ctrl_base <- trainControl(method="repeatedcv", number=10, repeats=3,
+#                           classProbs=TRUE, summaryFunction=twoClassSummary,
+#                           savePredictions="final")
+# ctrl_none <- ctrl_base
+# ctrl_down <- ctrl_base; ctrl_down$sampling <- "down"
+# ctrl_up   <- ctrl_base; ctrl_up$sampling   <- "up"
+# 
+# 
+# knn_none <- train(Exited ~ ., data=trainTransformed, method="knn",
+#                   trControl=ctrl_none, tuneGrid=data.frame(k=c(3,5,7)),
+#                   metric="ROC")
+# knn_down <- train(Exited ~ ., data=trainTransformed, method="knn",
+#                   trControl=ctrl_down, tuneGrid=data.frame(k=c(3,5,7)),
+#                   metric="ROC")
+# knn_up   <- train(Exited ~ ., data=trainTransformed, method="knn",
+#                   trControl=ctrl_up,   tuneGrid=data.frame(k=c(3,5,7)),
+#                   metric="ROC")
+# 
+# knn_none; knn_down; knn_up
+# #control= trainControl(method="repeatedcv",repeats=3) 
+# #knnModel <- train(
+# #  Exited ~ ., 
+# #  data = trainTransformed, 
+# #  method = "knn", 
+# #  trControl = control , 
+# #  tuneLength= 20)
+# 
+# #############
+# ###control <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
 ```
 
 
 ```{r}
-set.seed(123)
-preProcValues <- preProcess(train_df, method = c("center", "scale"))
-
-trainTransformed <- predict(preProcValues, train_df)
-testTransformed <- predict(preProcValues, test_df)
-
-
-ctrl <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
-
-# sobre el 2/3 hacemos el Cross-validation, sobre el trainTransformed entrenamos el modelo
-# va a hacer 3 veces con cada valor de k, y nos quedamos con el mejor.
-
-knnModel <- train(
-  Exited ~ ., 
-  data = trainTransformed, 
-  method = "knn", 
-  trControl = trainControl(method = "cv"), 
-  tuneGrid = data.frame(k = c(3,5,7)))
-
-# Una vez entrenado el modelo, tenemos que decir con qué modelo nos quedamos
-knnModel
-plot(knnModel)
-```
-
-
-```{r}
-ctrl_base <- trainControl(method="repeatedcv", number=10, repeats=3,
-                          classProbs=TRUE, summaryFunction=twoClassSummary,
-                          savePredictions="final")
-ctrl_none <- ctrl_base
-ctrl_down <- ctrl_base; ctrl_down$sampling <- "down"
-ctrl_up   <- ctrl_base; ctrl_up$sampling   <- "up"
-
-
-knn_none <- train(Exited ~ ., data=trainTransformed, method="knn",
-                  trControl=ctrl_none, tuneGrid=data.frame(k=c(3,5,7)),
-                  metric="ROC")
-knn_down <- train(Exited ~ ., data=trainTransformed, method="knn",
-                  trControl=ctrl_down, tuneGrid=data.frame(k=c(3,5,7)),
-                  metric="ROC")
-knn_up   <- train(Exited ~ ., data=trainTransformed, method="knn",
-                  trControl=ctrl_up,   tuneGrid=data.frame(k=c(3,5,7)),
-                  metric="ROC")
-
-knn_none; knn_down; knn_up
-#control= trainControl(method="repeatedcv",repeats=3) 
-#knnModel <- train(
-#  Exited ~ ., 
-#  data = trainTransformed, 
-#  method = "knn", 
-#  trControl = control , 
-#  tuneLength= 20)
-
-#############
-###control <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
-```
-
-
-```{r}
-best_model<- knn3(
-  Exited ~ .,
-  data = trainTransformed,
-  k = knnModel$bestTune$k
-)
-best_model
-predictions <- predict(best_model, testTransformed,type = "class")
-# Calculate confusion matrix
-cm <- confusionMatrix(predictions, testTransformed$Exited)
-cm
-data.frame(Accuracy = cm$overall["Accuracy"],
-           Sensitivity = cm$byClass["Sensitivity"],
-           Specificity = cm$byClass["Specificity"])
-
-roc(testTransformed$Exited, as.data.frame(predictions)[,"1"],plot=TRUE)
+# best_model<- knn3(
+#   Exited ~ .,
+#   data = trainTransformed,
+#   k = knnModel$bestTune$k
+# )
+# best_model
+# predictions <- predict(best_model, testTransformed,type = "class")
+# # Calculate confusion matrix
+# cm <- confusionMatrix(predictions, testTransformed$Exited)
+# cm
+# data.frame(Accuracy = cm$overall["Accuracy"],
+#            Sensitivity = cm$byClass["Sensitivity"],
+#            Specificity = cm$byClass["Specificity"])
+# 
+# roc(testTransformed$Exited, as.data.frame(predictions)[,"1"],plot=TRUE)
 ```
 
 
@@ -364,7 +488,7 @@ library(VIM)
 
 # Cargamos la base de datos necesarios
 
-dd <- read.table("credscoClean.csv",header = T,sep=";",stringsAsFactors=TRUE)
+dd <- data_transformada
 summary(dd)
 dd[3310,1]<-"positiu"
 test <- sample(1:nrow(dd), size = nrow(dd)/3)
