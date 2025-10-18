@@ -553,7 +553,10 @@ vis_dat(datamice_final)
 
 ```
 
+Se  muestra un análisis visual de los datos faltantes en un conjunto de datos. En el histograma de la izquierda, se puede observar el porcentaje de valores ausentes por variable: las columnas Exited, ID y Gender presentan alrededor del 20 % al 30 % de datos faltantes, como se habia comentado en apartados anteriores, además de ser variables que no se han utilizado para imputar, mientras que las demás variables no tienen valores perdidos. 
+En el gráfico de patrones a la derecha, cada fila representa una combinación específica de variables con datos faltantes (en rojo) o completos (en azul). Las barras a la derecha indican la proporción de observaciones que siguen cada patrón: por ejemplo, el patrón más común (34.1 %) no tiene datos faltantes, mientras que otros muestran combinaciones específicas de variables con valores ausentes. En conjunto, estos gráficos permiten identificar tanto la magnitud como la estructura de los datos faltantes en el dataset.
 
+Mediante el uso de `vis.data()`se muestra una visualización general del conjunto de datos después de la imputación. Cada columna representa una variable y los colores indican su tipo de dato: character, factor, integer, numeric o valores faltantes (NA). La ausencia de áreas grises indica que la imputación se ha realizado correctamente y ya no quedan valores perdidos como era deseado.
 
 ```{r}
 density_before_after(data, datamice_final)
@@ -563,9 +566,13 @@ density_before_after(data, datamice_final)
 mass_before_after(data, datamice_final)
 ```
 
-Los resultados son muy buenos tanto para las variables numéricas como para las categóricas: las distribuciones se mantienen muy fieles a las existentes antes de la imputación. Además, todos los NA han sido removidos (solamente quedan los de las variables Surname e ID, que no se pueden imputar y no tienen valor predictivo, además de Exited para el grupo test).
+Finalemente se observa el conjunto de gráficos, representando las comparaciones de densidades y distribuciones entre los datos originales e imputados. En la parte superior, las gráficas de densidad muestran que las distribuciones de las variables numéricas como Age, Balance o CreditScore entre otras son muy similares en el antes y después de la imputación, lo cual indica que el método empleado preservó la forma y tendencia original de los datos, acceptando este modelo de imputación como el correcto en el caso del variables numericas. 
 
-Así pues, guardamos la base de datos final
+En la parte inferior, los gràficos gráficas de barras representan la comparación de las variables categóricas, donde se puede distinguir una correspondencia cercana entre las proporciones originales e imputadas, dando evidencia  que el proceso no distorsionó significativamente las categorías existentes.Confirmando así que la imputación fue adecuada y mantuvo la integridad estadística del conjunto de datos.
+
+En conclusión los resultados son muy buenos tanto para las variables numéricas como para las categóricas: las distribuciones se mantienen muy fieles a las existentes antes de la imputación. Además, todos los NA han sido removidos (solamente quedan los de las variables Surname e ID, que no se pueden imputar y no tienen valor predictivo, además de Exited para el grupo test).
+
+Así pues, se guarda la base de datos final para ser utilizado en pasos por venir. 
 ```{r}
 data_imputado<-datamice_final
 rm(list = setdiff(ls(), "data_imputado"))
