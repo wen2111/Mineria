@@ -2,7 +2,11 @@
 title: "kNN"
 author: "Siling Guo"
 date: "2025-10-14"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
 ---
 
 ```{r setup, include=FALSE}
@@ -13,11 +17,7 @@ library(pROC) # Para calculos de la ROC
 library(caret)
 library(class)
 load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
-```
-
-```{r}
 # load("../Mineria/DATA/dataaaaaaaaaaaaaa.RData")
-str(data_transformada)
 ```
 
 ## KNN-Clasificador 
@@ -55,6 +55,7 @@ X_testC <- X_testC[, -ind_col]
 # cl<-data$Exited[-muestra]  # variable output que queremos pronosticar.
 ```
 
+# No balanceado
 ```{r}
 library(caret)
 
@@ -82,9 +83,10 @@ test_num  <- data.frame(predict(dmy, newdata = X_test_feat))
 preproc <- preProcess(train_num, method = c("center","scale"))
 trainScaled <- predict(preproc, train_num)
 testScaled  <- predict(preproc, test_num)
+```
 
 # kNN CV
-set.seed(123)
+```{r}
 ctrl <- trainControl(method = "cv", number = 5, classProbs = TRUE)
 entrenamiento <- train(
   x = trainScaled,
@@ -96,8 +98,8 @@ entrenamiento <- train(
 entrenamiento
 entrenamiento$modelType
 ```
-Se observa que al aumentar k de 1 a 20, el Accuracy augmenta de 0,71 a 0,80, mientras que la veolocidad del crecimiento ya se ha moderado bastante a partir de k=17.
-El valor de kappa ha estado bajo con todas las k, entre 0,12 y 0,16. Se afirma que la capacidad de classificar los dos tipos (yes exited y no exited) es muy bajo, teniedo en cuenta que se esta trabajando con una base de datos desbalanceada.
+Se observa que al aumentar k de 1 a 20, el Accuracy augmenta de 0,71 a 0,80, mientras que la velocidad del crecimiento ya se ha moderado bastante a partir de k=17.
+El valor de kappa ha estado bajo con todas las k, entre 0,12 y 0,14. Se afirma que la capacidad de classificar los dos tipos (yes exited y no exited) es muy bajo, teniedo en cuenta que se esta trabajando con una base de datos desbalanceada.
 
 ```{r}
 pred_prob  <- predict(entrenamiento, newdata = testScaled, type = "prob")
@@ -111,7 +113,7 @@ get_best_result = function(caret_fit) {
   rownames(best_result) = NULL
   best_result
 }
-head(entrenamiento$results, 5)
+head(entrenamiento$results, 16)
 ```
 
 
@@ -119,25 +121,41 @@ head(entrenamiento$results, 5)
 plot(entrenamiento)
 ```
 
+## KnN con k= 20 (automático)
 ```{r}
 pred_label <- predict(entrenamiento, newdata = testScaled)
 cm <- confusionMatrix(pred_label, y_testC, positive = "Yes")
 cm
 ```
-El modelo kNN obtuve la exactitud global (Accuracy) del 80,81%, 
+El modelo kNN obtuve la exactitud global (Accuracy) del 80,71%, 
 lo que indica que acierta aproximadamente 80,81% del conjunto de prueba. Pero es trivial tener en cuenta el desequilibrio entre "Yes" (clientes abandonan) y "No" clientes permanencen.
-- Se puede ver que la Sensibilidad = 0,1471, muestra que el modelo solo ha podido identificar correctamente un 14,71% de los clientes que abandonan. La gran mayoría de los casos no han sido detectados.
-- Debido el sesgo havia la clase moyoritaria "No", la Especificidad es muy alta,  un  98,07%.
-- La precisión positiva (Pos Pred Value) es 0,6667 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 66,67% realmente abandonaron.
-El índice Kappa es 0,1796 confirma que el acuerdo del modelo con las etiquetas reales es solo ligeramente meor que el azar. Es muy bajo para ser un modelo robusto.
-El modelo tiene exactitud balanceada 0,56, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
+- Se puede ver que la Sensibilidad = 0,1448, muestra que el modelo solo ha podido identificar correctamente un 14,48% de los clientes que abandonan. La gran mayoría de los casos no han sido detectados.
+- Debido el sesgo havia la clase mayoritaria "No", la Especificidad es muy alta,  un  98,02%.
+- La precisión positiva (Pos Pred Value) es 0,6563 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 65,63% realmente abandonaron.
+El índice Kappa es 0,1755 confirma que el acuerdo del modelo con las etiquetas reales es solo ligeramente meor que el azar. Es muy bajo para ser un modelo robusto.
+- El modelo tiene exactitud balanceada 0,56, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
 
+
+
+# kNN con k=15
+```{r}
+fit_knn_15 <- train(
+  x = trainScaled,
+  y = y_trainC,
+  method = "knn",
+  trControl = trainControl(method="cv", number=5, classProbs=TRUE),
+  tuneGrid = data.frame(k = 15)
+)
+
+fit_knn_15
+confusionMatrix(predict(fit_knn_15, newdata=testScaled), y_testC)
+
+```
+
+
+# kNN Oversampling 
 Considerando que no es una base de datos extremadamente grande, para mejorar este rendimeinto, sería bueno aplicar técnicas como Undersampling, Oversampling, SMOTE, ROSE.
-
-
-
-# kNN con Oversampling
-
+## Simple
 ```{r}
 set.seed(123)
 ctrl_up <- trainControl(
@@ -162,44 +180,66 @@ pred_lab_up  <- predict(fit_knn_up, newdata = testScaled)
 # Evaluación (umbral 0.5)
 cm_up <- confusionMatrix(pred_lab_up, y_testC, positive = "Yes")
 cm_up
-
-# umbral0.30 (para subir Sensitivity)
-tau <- 0.30
-pred_tau <- factor(ifelse(pred_prob_up$Yes >= tau, "Yes", "No"), levels = levels(y_testC))
-confusionMatrix(pred_tau, y_testC, positive = "Yes")
-
 ```
-# kNN con Oversampling usando Random Forest
+El modelo kNN con umbral 0,5 obtiene la exactitud global (Accuracy) del 60,76%, ha bajado bastante en comparación con el modelo sin oversampling.
+
+- Se puede ver que la Sensibilidad = 0,6138, muestra que el modelo solo ha podido identificar correctamente un 61,38% de los clientes que abandonan. La gran mayoría de los casos no han sido detectados.
+
+- Debido el sesgo havia la clase mayoritaria "No", la Especificidad es muy alta, un 60,6%.
+- La precisión positiva (Pos Pred Value) es 0,2893 es muy bajo en comparación con el modelo sin oversampling.
+
+El índice Kappa tamiñen ha bajado a ser 0,1554.
+
+- El modelo tiene exactitud balanceada 0,6099, es un poco mejor.
 
 ```{r}
+# umbral 0.30 (para subir Sensitivity)
+
+tau <- 0.30
+pred_tau <- factor(ifelse(pred_prob_up$Yes >= tau, "Yes", "No"), levels = levels(y_testC))
+cm_tau <- confusionMatrix(pred_tau, y_testC, positive = "Yes")
+cm_tau
+```
+El modelo kNN con umbral 0,3 obtiene la exactitud global (Accuracy) del solo 41,71%.
+
+- La Sensibilidad = 0,1471, muestra que el modelo solo ha podido identificar correctamente un 84,6%.
+
+- La precisión positiva (Pos Pred Value) es 24,13%, ha bajado mucho.
+
+- El índice Kappa es 0,0785 confirma que el acuerdo del modelo con las etiquetas reales es solo ligeramente meor que el azar.Es aún más bajo que el modelo con umbral 0,5.
+- La exactitud balanceada 0,5755, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
+
+
+## Con Random Forest (leeeeeeeeeeeeeeeeeeeeeeeeeeentiiiiiiisimo)
+```{r}
 # install.packages("randomForest")
-library(randomForest)
+# library(randomForest)
+# 
+# set.seed(123)
+# # y split con default_idx
+# X_train_rg <- train_df[default_idx, ]
+# X_test_rg  <- train_df[-default_idx, ]
+# 
+# # Objetivo con niveles válidos
+# X_train_rg$Exited <- factor(ifelse(as.character(X_train_rg$Exited) == "1", "Yes", "No"), levels = c("Yes","No"))
+# y_test_rg <- factor(ifelse(as.character(y_testC) == "1", "Yes", "No"), levels = c("Yes","No"))
+# 
+# # Asegura que todos los predictores no sean character:
+# chr_cols <- sapply(X_train_rg, is.character)
+# X_train_rg[chr_cols] <- lapply(X_train_rg[chr_cols], factor)
+# X_test_rg[ chr_cols] <- lapply(X_test_rg[ chr_cols], factor)
+# 
+# ctrl_up <- trainControl(
+#   method = "repeatedcv", number = 10, repeats = 10,
+#   verboseIter = FALSE,
+#   classProbs = TRUE,
+#   sampling = "up",                # ← oversampling
+#   summaryFunction = twoClassSummary
+# )
 
-set.seed(123)
-# y split con default_idx
-X_train_rf <- train_df[default_idx, ]
-X_test_rf  <- train_df[-default_idx, ]
-
-# Objetivo con niveles válidos
-X_train_rf$Exited <- factor(ifelse(as.character(X_train_rf$Exited) == "1", "Yes", "No"), levels = c("Yes","No"))
-y_test_rf <- factor(ifelse(as.character(y_testC) == "1", "Yes", "No"), levels = c("Yes","No"))
-
-# Asegura que todos los predictores no sean character:
-chr_cols <- sapply(X_train_rf, is.character)
-X_train_rf[chr_cols] <- lapply(X_train_rf[chr_cols], factor)
-X_test_rf[ chr_cols] <- lapply(X_test_rf[ chr_cols], factor)
-
-ctrl_up <- trainControl(
-  method = "repeatedcv", number = 10, repeats = 10,
-  verboseIter = FALSE,
-  classProbs = TRUE,
-  sampling = "up",                # ← oversampling
-  summaryFunction = twoClassSummary
-)
-
-# # Entrenamiento RF
+# # Entrenamiento RF tooooooooooo slowwwwwwww
 # model_rf_over <- train(
-#   Exited ~ ., data = X_train_rf,
+#   Exited ~ ., data = X_train_rg,
 #   method = "rf",
 #   preProcess = NULL, # RF no necesita center ni scale
 #   trControl = ctrl_up,
@@ -207,25 +247,43 @@ ctrl_up <- trainControl(
 # )
 # 
 # # Probabilidades sobre el test (en crudo)
-# prob_rf <- predict(model_rf_over, newdata = X_test_rf, type = "prob")
-# head(prob_rf)
+# prob_rg <- predict(model_rf_over, newdata = X_test_rg, type = "prob")
+# head(prob_rg)
 # 
 # # Etiquetas por defecto (umbral 0.5)
-# pred_rf <- predict(model_rf_over, newdata = X_test_rf)
+# pred_rg <- predict(model_rf_over, newdata = X_test_rg)
 # 
 # # Matriz de confusión
-# cm_over <- confusionMatrix(pred_rf, y_test_rf, positive = "Yes")
+# cm_over <- confusionMatrix(pred_rg, y_test_rg, positive = "Yes")
 # cm_over
 # 
 # # umbral 0.30
 # tau <- 0.30
-# pred_rf_tau <- factor(ifelse(prob_rf$Yes >= tau, "Yes", "No"), levels = levels(y_test_rf))
-# confusionMatrix(pred_rf_tau, y_test_rf, positive = "Yes")
+# pred_rg_tau <- factor(ifelse(prob_rg$Yes >= tau, "Yes", "No"), levels = levels(y_test_rg))
+# confusionMatrix(pred_rg_tau, y_test_rg, positive = "Yes")
 
 ```
 
-# kNN con randomdorest más rápido (ranger)
+## Ranger
+kNN Oversampling con randomforest es muy lento, por lo tanto se utiliza otra manera: Ranger, que es una implementación más rápida de randomForest.
 ```{r}
+# install.packages("randomForest")
+library(randomForest)
+X_train_rg <- train_df[default_idx, ]
+X_test_rg  <- train_df[-default_idx, ]
+
+X_train_rg$Exited <- factor(ifelse(as.character(X_train_rg$Exited) == "1", "Yes", "No"), levels = c("Yes","No"))
+y_test_rg <- factor(ifelse(as.character(y_testC) == "1", "Yes", "No"), levels = c("Yes","No"))
+
+# Asegura que todos los predictores no sean character
+chr_cols <- sapply(X_train_rg, is.character)
+X_train_rg[chr_cols] <- lapply(X_train_rg[chr_cols], factor)
+X_test_rg[chr_cols] <- lapply(X_test_rg[chr_cols], factor)
+```
+
+
+```{r}
+set.seed(123)
 ctrl_fast <- trainControl(
   method = "cv", number = 5,
   classProbs = TRUE,
@@ -234,8 +292,8 @@ ctrl_fast <- trainControl(
   savePredictions = "final"
 )
 
-fit_rf_fast <- train(
-  Exited ~ ., data = X_train_rf,
+fit_rg_fast <- train(
+  Exited ~ ., data = X_train_rg,
   method   = "ranger",
   trControl= ctrl_fast,
   metric   = "ROC",
@@ -243,171 +301,120 @@ fit_rf_fast <- train(
   importance = "none", 
   num.trees = 300 # menos árboles para mayor velocidad
 )
-fit_rf_fast
+fit_rg_fast
 ```
 
 ```{r}
-prob_rf <- predict(fit_rf_fast, newdata = X_test_rf, type = "prob")
-pred_rf <- predict(fit_rf_fast, newdata = X_test_rf)
+prob_rg <- predict(fit_rg_fast, newdata = X_test_rg, type = "prob")
+pred_rg <- predict(fit_rg_fast, newdata = X_test_rg)
 
-pred_rf<- factor(pred_rf, levels = c("Yes","No"))
-X_test_rf$Exited <- factor(ifelse(as.character(X_test_rf$Exited) == "1", "Yes", "No"),
-                           levels = c("Yes","No"))
+pred_rg<- factor(pred_rg, levels = c("Yes","No"))
+X_test_rg$Exited <- factor(ifelse(as.character(X_test_rg$Exited) == "1", "Yes", "No"),levels = c("Yes","No"))
 
-cm_rf <- confusionMatrix(pred_rf, X_test_rf$Exited, positive = "Yes")
-cm_rf
+cm_rg <- confusionMatrix(pred_rg, X_test_rg$Exited, positive = "Yes")
+cm_rg
+```
+- La exactitud global (Accuracy) del 80,57%, lo que indica que acierta aproximadamente 80,57% del conjunto de prueba. Ha bajado en comparación en el modelo sin oversampling.
+- La Sensibilidad = 0.31264, (antes era 0,1471). Muestra que el modelo ha podido identificar correctamente un 31,26% de los clientes que abandonan. La gran mayoría de los casos no han sido detectados, pero ha mejorado bastante en comparación con el modelo sin oversampling.
+- Debido el sesgo había la clase mamyoritaria "No", la Especificidad es muy alta, un  98,07%.
+- La precisión positiva (Pos Pred Value) es 0,6667 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 66,67% realmente abandonaron.
+- El índice Kappa es 0,1796 confirma que el acuerdo del modelo con las etiquetas reales es solo ligeramente meor que el azar. Es muy bajo para ser un modelo robusto.
+- El témino Exactitud balanceada 0,56, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
 
+Este modelo detecta aproximadamente un tercio de los clientes que efectivamente abandonan, manteniendo una baja tasa de falsos positivos. La técnica de oversampling con opción ranger permite mejorar la detección de la clase minoritaria (en comparación con el modelo KNN anterior).
 
+```{r}
 library(pROC)
-roc_rf <- roc(response = X_test_rf$Exited, predictor = prob_rf$Yes, levels = c("No","Yes"))
-plot(roc_rf, col="blue", main="ROC - Random Forest con Oversampling")
+roc_rf <- roc(response = X_test_rg$Exited, predictor = prob_rg$Yes, levels = c("No","Yes"))
+plot(roc_rf, col="blue", main="ROC - Ranger con Oversampling")
 auc(roc_rf)
 ```
+Con un AUC de 0,7547, lo que indica una capacidad discriminativa moderadamente alta para distinguir entre clientes que abandonan y los que permanecen.
 
 ```{r}
-levels(pred_rf)
-levels(X_test_rf$Exited)
-table(pred_rf, useNA="ifany")
-table(X_test_rf$Exited, useNA="ifany")
+levels(pred_rg)
+levels(X_test_rg$Exited)
+table(pred_rg, useNA="ifany")
+table(X_test_rg$Exited, useNA="ifany")
 ```
+
 # ROSE
 ```{r}
-ctrl <- trainControl(method = "repeatedcv", 
-                     number = 10, 
-                     repeats = 10, 
-                     verboseIter = FALSE,
-                     sampling = "rose")
+X_train_rs <- train_df[default_idx, ]
+X_train_rs  <- train_df[-default_idx, ]
 
-set.seed(42)
-model_rf_rose <- caret::train(classes ~ .,
-                              data = train_data,
-                              method = "rf",
-                              preProcess = c("scale", "center"),
-                              trControl = ctrl)
+X_train_rs$Exited <- factor(ifelse(as.character(X_train_rs$Exited) %in% c("1","Yes"), "Yes", "No"),levels = c("Yes","No"))
+X_train_rs$Exited  <- factor(ifelse(as.character(X_train_rs$Exited)  %in% c("1","Yes"), "Yes", "No"),levels = c("Yes","No"))
+
+# convertir niveles de factores para evitar espacios en blanco
+clean_factor_levels <- function(df){
+  fac <- names(df)[sapply(df, is.factor)]
+  for (col in fac) levels(df[[col]]) <- make.names(levels(df[[col]]))
+  df
+}
+X_train_rs <- clean_factor_levels(X_train_rs)
+X_train_rs  <- clean_factor_levels(X_train_rs)
+
+# ROSE
+library(ROSE)
+set.seed(123)
+ctrl_rose <- trainControl(method="cv", number=5, classProbs=TRUE,
+                          summaryFunction=twoClassSummary, sampling="rose")
+fit_rs_rose <- train(Exited ~ ., data=X_train_rs, method="ranger", trControl=ctrl_rose, metric="ROC", tuneLength=5, num.trees=300)
+
+prob_rose <- predict(fit_rs_rose, newdata=X_train_rs, type="prob")[,"Yes"]
+pred_rose <- predict(fit_rs_rose, newdata=X_train_rs)
+
+cm_rose <- confusionMatrix(pred_rose, X_train_rs$Exited, positive="Yes")
+cm_rose
 ```
+- La exactitud global (Accuracy) indica que acierta aproximadamente 82,05% del conjunto de prueba. Es similar al modelo con oversampling con ranger
+- La Sensibilidad = 0,34943, (antes era 0.31264). Muestra que el modelo ha podido identificar correctamente un 34,943% de los clientes que abandonan. La gran mayoría de los casos no han sido detectados, pero ha mejorado bastante en comparación con el modelo oversampling con ranger.
+- Debido el sesgo había la clase mamyoritaria "No", la Especificidad sigue siendo muy alta, un 94,35%.
+- La precisión positiva (Pos Pred Value) es 0,6178 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 61,78% realmente abandonaron. Ha bajado un poco en comparación con el modelo oversampling con ranger. Se interesa más en detectar la clase minoritaria.
+- El índice Kappa es 0,349, es un doble del mismo índice del modelo anterior. Ha mejorado bastante.
+- El témino Exactitud balanceada 0,64648,  el modelo consigue equilibrar mejor la detección de ambas clases.
+
 
 ```{r}
-final_rose <- data.frame(actual = test_data$classes,
-                         predict(model_rf_rose, newdata = test_data, type = "prob"))
-final_rose$predict <- ifelse(final_rose$benign > 0.5, "benign", "malignant")
-```
+tau <- 0.30
+pred_rose_tau <- factor(ifelse(prob_rose >= tau, "Yes", "No"),
+                        levels = c("Yes","No"))
+confusionMatrix(pred_rose_tau, X_train_rs$Exited, positive = "Yes")
 
-```{r}
-cm_rose <- confusionMatrix(final_rose$predict, test_data$classes)
 ```
 
 
 # SMOTE
 ```{r}
-# install.packages("themis")
-library(themis)
-ctrl_smote <- ctrl_fast; ctrl_smote$sampling <- "smote"
-fit_rf_smote <- train(Exited~., data=X_train_rf, method="ranger",
-                      trControl=ctrl_smote, metric="ROC",
-                      tuneGrid=grid, num.trees=300)
-
-```
-
-# HASTA AQUÍ
-
-
-
-
-```{r}
 set.seed(123)
-k_to_try = 1:100
-err_k = rep(x = 0, times = length(k_to_try))
 
-for (i in seq_along(k_to_try)) {
-  pred <- knn(train = X_trainC, 
-             test  = X_testC, 
-             cl    = y_trainC, 
-             k     = k_to_try[i], 
-             prob = T)
-  err_k[i] <- calc_class_err(y_testC, pred)
-}
+ctrl_smote <- trainControl(
+  method = "cv", number = 5,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  sampling = "smote"
+)
+
+fit_rf_smote <- train(
+  Exited ~ ., data = X_train_rg,
+  method = "ranger",
+  trControl = ctrl_smote,
+  metric = "ROC",
+  num.trees = 300,
+  tuneLength = 5
+)
+
+prob_smote <- predict(fit_rf_smote, newdata = X_test_rg, type = "prob")[,"Yes"]
+pred_smote <- predict(fit_rf_smote, newdata = X_test_rg)
+
+cm_smote <- confusionMatrix(pred_smote, X_test_rg$Exited, positive = "Yes")
+cm_smote
 ```
 
 ```{r}
-# plot error vs choice of k
-plot(err_k, type = "b", col = "dodgerblue", cex = 1, pch = 20, 
-     xlab = "k, number of neighbors", ylab = "classification error",
-     main = "(Test) Error Rate vs Neighbors")
-# add line for min error seen
-abline(h = min(err_k), col = "darkorange", lty = 3)
-# add line for minority prevalence in test set
-abline(h = mean(y_test == "Yes"), col = "grey", lty = 2)
+save.image("kNNEnvironment.RData")
 ```
-
-
-```{r}
-train_df <- data[is_train, , drop = FALSE]
-test_df  <- data[data$group == "test", , drop = FALSE]
-
-# Ordenar y preparar prSummary dentre del caret
-train_df$Exited <- as.character(train_df$Exited)
-train_df$Exited <- ifelse(train_df$Exited %in% c("1", 1), "Yes",
-                          ifelse(train_df$Exited %in% c("0", 0), "No", NA))
-
-train_df$Exited <- factor(train_df$Exited, levels = c("Yes", "No"))
-# Descartar columnas no necesarias
-drops <- c("ID","group")
-# Estandarización de la DATA, solo numéricas
-# data_stand <- scale(train_df[, !(names(train_df) %in% drops)])
-```
-
-
-```{r}
-# ctrl_base <- trainControl(method="repeatedcv", number=10, repeats=3,
-#                           classProbs=TRUE, summaryFunction=twoClassSummary,
-#                           savePredictions="final")
-# ctrl_none <- ctrl_base
-# ctrl_down <- ctrl_base; ctrl_down$sampling <- "down"
-# ctrl_up   <- ctrl_base; ctrl_up$sampling   <- "up"
-# 
-# 
-# knn_none <- train(Exited ~ ., data=trainTransformed, method="knn",
-#                   trControl=ctrl_none, tuneGrid=data.frame(k=c(3,5,7)),
-#                   metric="ROC")
-# knn_down <- train(Exited ~ ., data=trainTransformed, method="knn",
-#                   trControl=ctrl_down, tuneGrid=data.frame(k=c(3,5,7)),
-#                   metric="ROC")
-# knn_up   <- train(Exited ~ ., data=trainTransformed, method="knn",
-#                   trControl=ctrl_up,   tuneGrid=data.frame(k=c(3,5,7)),
-#                   metric="ROC")
-# 
-# knn_none; knn_down; knn_up
-# #control= trainControl(method="repeatedcv",repeats=3) 
-# #knnModel <- train(
-# #  Exited ~ ., 
-# #  data = trainTransformed, 
-# #  method = "knn", 
-# #  trControl = control , 
-# #  tuneLength= 20)
-# 
-# #############
-# ###control <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
-```
-
-
-```{r}
-# best_model<- knn3(
-#   Exited ~ .,
-#   data = trainTransformed,
-#   k = knnModel$bestTune$k
-# )
-# best_model
-# predictions <- predict(best_model, testTransformed,type = "class")
-# # Calculate confusion matrix
-# cm <- confusionMatrix(predictions, testTransformed$Exited)
-# cm
-# data.frame(Accuracy = cm$overall["Accuracy"],
-#            Sensitivity = cm$byClass["Sensitivity"],
-#            Specificity = cm$byClass["Specificity"])
-# 
-# roc(testTransformed$Exited, as.data.frame(predictions)[,"1"],plot=TRUE)
-```
-
 
 # KNN REGRESSION
 ```{r}
