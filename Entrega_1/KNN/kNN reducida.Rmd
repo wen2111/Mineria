@@ -23,7 +23,7 @@ load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/DATA/dataaaaaaaaaaaaaa
 
 ## KNN-Clasificador 
 ```{r}
-data <- data_transformada
+data <- data_reducida
 summary(data)
 ```
 
@@ -36,58 +36,37 @@ En la base de datos data_transformada, hay dos parte de datos, test original y t
 ## División del TRAIN & TEST
 ```{r}
 set.seed(123)
-train_df <- data[data$group == "train" & !is.na(data$Exited), ]
-train_df<- subset(train_df, select = -c(ID, Surname, group))
-train_df$Exited <- factor(train_df$Exited, levels = c("1","0"))
+df <- subset(data, !is.na(Exited))
+
+df$Exited <- factor(ifelse(df$Exited == 1, "Yes", "No"), levels = c("Yes","No"))
+
+idx <- createDataPartition(df$Exited, p = 0.7, list = FALSE)
+
+train_df <- df[idx, ]
+test_df <- df[-idx,]
+
+y_trainC <- train_df$Exited
+y_testC <- test_df$Exited
 
 
-ind_col <- which(names(train_df) == "Exited") # columna de indicador
-default_idx <- createDataPartition(train_df$Exited, p = 0.7, list = FALSE) # 70% para entrenamiento
-
-X_trainC <- train_df[default_idx, ]
-X_testC  <- train_df[-default_idx, ]
-
-y_testC <- X_testC[, ind_col]
-X_testC <- X_testC[, -ind_col]
-
-# muestra <- sample(1:nrow(train_df), size = nrow(train_df)/3)
-# train<-data.frame(train_df[-muestra,])
-# test<-data.frame(train_df[muestra,])
-# cl<-data$Exited[-muestra]  # variable output que queremos pronosticar.
-```
-
-# No balanceado
-```{r}
-library(caret)
-
-# Crear preprocesador para centrado y escalado
-preproc <- preProcess(X_trainC, method = c("center", "scale"))
-
-# Aplicar transformación
-X_trainC <- predict(preproc, X_trainC)
-X_testC <- predict(preproc, X_testC)
-```
-
-```{r}
-y_trainC <- factor(ifelse(as.character(X_trainC$Exited) == "1", "Yes", "No"), levels = c("Yes","No"))
-y_testC  <- factor(ifelse(as.character(y_testC) == "1", "Yes", "No"), levels = levels(y_trainC))
-
-X_train_feat <- X_trainC[, setdiff(names(X_trainC), "Exited")]
-X_test_feat  <- X_testC
+X_trainC <- train_df[, setdiff(names(train_df), "Exited")]
+X_testC <- test_df[, setdiff(names(test_df), "Exited")]
 
 # Convertir variables categóricas en dummies
-dmy <- dummyVars(~ ., data = X_train_feat, fullRank = TRUE)
-train_num <- data.frame(predict(dmy, newdata = X_train_feat))
-test_num  <- data.frame(predict(dmy, newdata = X_test_feat))
+dmy <- dummyVars(~ ., data = X_trainC, fullRank = TRUE)
+train_num <- data.frame(predict(dmy, newdata = X_trainC))
+test_num  <- data.frame(predict(dmy, newdata = X_testC))
 
-# Escalar las variables numéricas
+# estandarizar las variables
 preproc <- preProcess(train_num, method = c("center","scale"))
 trainScaled <- predict(preproc, train_num)
 testScaled  <- predict(preproc, test_num)
+
 ```
 
-# kNN CV
+# KNN con k= (automático)
 ```{r}
+set.seed(123)
 ctrl <- trainControl(method = "cv", number = 5, classProbs = TRUE)
 entrenamiento <- train(
   x = trainScaled,
@@ -98,60 +77,59 @@ entrenamiento <- train(
 )
 entrenamiento
 entrenamiento$modelType
+plot(entrenamiento)
 ```
-Se observa que al aumentar k de 1 a 20, el Accuracy augmenta de 0,71 a 0,80, mientras que la velocidad del crecimiento ya se ha moderado bastante a partir de k=17.
-El valor de kappa ha estado bajo con todas las k, entre 0,12 y 0,14. Se afirma que la capacidad de classificar los dos tipos (yes exited y no exited) es muy bajo, teniedo en cuenta que se esta trabajando con una base de datos desbalanceada.
+Se observa que al aumentar k de 1 a 20, el Accuracy augmenta de 0,74 a 0,81, mientras que la velocidad del crecimiento ya se ha moderado bastante a partir de k=9.
+El valor de kappa ha estado bajo con todas las k, entre 0,20 y 0,28. Se afirma que la capacidad de classificar los dos tipos (yes exited y no exited) es bajo, pero comporta mejor que la base de datos data_transformada. teniedo en cuenta que se esta trabajando con una base de datos desbalanceada.
 
 ```{r}
+set.seed(123)
 pred_prob  <- predict(entrenamiento, newdata = testScaled, type = "prob")
 head(pred_prob, 10)
 ```
 
 ```{r}
-get_best_result = function(caret_fit) {
-  best = which(rownames(caret_fit$results) == rownames(caret_fit$bestTune))
-  best_result = caret_fit$results[best, ]
-  rownames(best_result) = NULL
-  best_result
-}
 head(entrenamiento$results, 16)
 ```
 
 
 ```{r}
-plot(entrenamiento)
-```
-
-## KNN con k= 20 (automático)
-```{r}
+set.seed(123)
 pred_label <- predict(entrenamiento, newdata = testScaled)
 cm_cv <- confusionMatrix(pred_label, y_testC, positive = "Yes")
 cm_cv
 ```
-El modelo kNN obtuve la exactitud global (Accuracy) del 80,76%, 
-lo que indica que acierta aproximadamente 80,81% del conjunto de prueba. Pero es trivial tener en cuenta el desequilibrio entre "Yes" (clientes abandonan) y "No" clientes permanencen.
-- Se puede ver que la Sensibilidad = 0,1448, muestra que el modelo solo ha podido identificar correctamente un 14,02% de los clientes que abandonan. La gran mayoría de los casos no han sido detectados.
+El modelo kNN obtuve la exactitud global (Accuracy) del 81,24%, 
+lo que indica que acierta aproximadamente 81,24% del conjunto de prueba. Pero es trivial tener en cuenta el desequilibrio entre "Yes" (clientes abandonan) y "No" clientes permanencen.
+- La Sensibilidad = 0,27126, el modelo solo ha podido identificar correctamente un 27,126% de los clientes que abandonan. pero es más alta que usando data_transformada.
 - Debido el sesgo habia la clase mayoritaria "No", la Especificidad es muy alta,  un  98,19%.
-- La precisión positiva (Pos Pred Value) es 0,6703 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 67,03% realmente abandonaron.
-El índice Kappa es 0,1726 confirma que el acuerdo del modelo con las etiquetas reales es solo ligeramente meor que el azar. Es muy bajo para ser un modelo robusto.
-- El modelo tiene exactitud balanceada 0,56, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
+- La precisión positiva (Pos Pred Value) es 0,60513 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 60,513% realmente abandonaron.
+El índice Kappa es 0,2826 confirma que el acuerdo del modelo con las etiquetas reales es solo ligeramente meor que el azar. Es muy bajo para ser un modelo robusto.
+- El modelo tiene exactitud balanceada 0,61251, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
 
 
 
-# kNN CV con k=15
+# kNN CV con k=9
 ```{r}
-fit_knn_15 <- train(
+set.seed(123)
+knn_9 <- train(
   x = trainScaled,
   y = y_trainC,
   method = "knn",
   trControl = trainControl(method="cv", number=5, classProbs=TRUE),
-  tuneGrid = data.frame(k = 15)
+  tuneGrid = data.frame(k = 9)
 )
 
-fit_knn_15
-confusionMatrix(predict(fit_knn_15, newdata=testScaled), y_testC)
-
+knn_9
+cm_cv_9<-confusionMatrix(predict(knn_9, newdata=testScaled), y_testC)
+cm_cv_9
 ```
+- El modelo kNN obtuve la exactitud global (Accuracy) del 81,14%
+- La Sensibilidad = 0,30115, el modelo solo ha podido identificar correctamente un 30,115% de los clientes que abandonan. pero es más alta que usando data_transformada.
+- Debido el sesgo habia la clase mayoritaria "No", la Especificidad es muy alta, un  94,474%.
+- La precisión positiva (Pos Pred Value) es 0,60513 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 60,513% realmente abandonaron.
+El índice Kappa es 0,2999 confirma que el acuerdo del modelo con las etiquetas reales es un poco mejor que el azar. Es muy bajo para ser un modelo robusto.
+- El modelo tiene exactitud balanceada 0,62295, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
 
 
 # KNN Oversampling 
@@ -182,6 +160,7 @@ pred_lab_up  <- predict(fit_knn_up, newdata = testScaled)
 cm_up <- confusionMatrix(pred_lab_up, y_testC, positive = "Yes")
 cm_up
 ```
+### comentario falta corrección
 El modelo kNN con umbral 0,5 obtiene la exactitud global (Accuracy) del 60,76%, ha bajado bastante en comparación con el modelo sin oversampling.
 
 - Se puede ver que la Sensibilidad = 0,6138, muestra que el modelo solo ha podido identificar correctamente un 61,38% de los clientes que abandonan. La gran mayoría de los casos no han sido detectados.
@@ -201,6 +180,8 @@ pred_tau <- factor(ifelse(pred_prob_up$Yes >= tau, "Yes", "No"), levels = levels
 cm_tau <- confusionMatrix(pred_tau, y_testC, positive = "Yes")
 cm_tau
 ```
+
+### comentario falta corrección
 El modelo kNN con umbral 0,3 obtiene la exactitud global (Accuracy) del solo 41,71%.
 
 - La Sensibilidad = 0,1471, muestra que el modelo solo ha podido identificar correctamente un 84,6%.
@@ -270,12 +251,8 @@ kNN Oversampling con randomforest es muy lento, por lo tanto se utiliza otra man
 ```{r}
 # install.packages("randomForest")
 library(randomForest)
-X_train_rg <- train_df[default_idx, ]
-X_test_rg  <- train_df[-default_idx, ]
-
-X_train_rg$Exited <- factor(ifelse(as.character(X_train_rg$Exited) == "1", "Yes", "No"), levels = c("Yes","No"))
-y_test_rg <- factor(ifelse(as.character(y_testC) == "1", "Yes", "No"), levels = c("Yes","No"))
-
+X_train_rg <- df[idx, ]
+X_test_rg  <- df[-idx, ]
 ```
 
 
@@ -302,7 +279,7 @@ fit_rg_fast
 ```
 
 ```{r}
-prob_rg <- predict(fit_rg_fast, newdata = X_test_rg, type = "prob")
+set.seed(123)
 pred_rg <- predict(fit_rg_fast, newdata = X_test_rg)
 
 pred_rg<- factor(pred_rg, levels = c("Yes","No"))
