@@ -25,6 +25,8 @@ load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/DATA/dataaaaaaaaaaaaaa
 ```{r}
 data <- data_transformada
 summary(data)
+data<-data_imputado
+lapply(data[data$group=="train",], anyNA)
 ```
 
 ```{r}
@@ -37,7 +39,7 @@ En la base de datos data_transformada, hay dos parte de datos, test original y t
 ```{r}
 set.seed(123)
 train_df <- data[data$group == "train" & !is.na(data$Exited), ]
-train_df<- subset(train_df, select = -c(ID, Surname, group))
+train_df<- subset(train_df, select = -c(ID-, Surname, group))
 train_df$Exited <- factor(train_df$Exited, levels = c("1","0"))
 
 
@@ -137,7 +139,6 @@ El índice Kappa es 0,1726 confirma que el acuerdo del modelo con las etiquetas 
 - El modelo tiene exactitud balanceada 0,56, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
 
 
-
 # kNN CV con k=15
 ```{r}
 fit_knn_15 <- train(
@@ -151,6 +152,32 @@ fit_knn_15 <- train(
 fit_knn_15
 confusionMatrix(predict(fit_knn_15, newdata=testScaled), y_testC)
 
+```
+
+# KNN undersampling
+```{r}
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "down")
+
+set.seed(123)
+model_rf_under <- train(classes ~ .,
+                         data = train_data,
+                         method = "rf",
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl)
+```
+
+```{r}
+final_under <- data.frame(actual = test_data$classes,
+                    predict(model_rf_under, newdata = test_data, type = "prob"))
+final_under$predict <- ifelse(final_under$benign > 0.5, "benign", "malignant")
+```
+
+```{r}
+cm_under <- confusionMatrix(final_under$predict, test_data$classes)
 ```
 
 
