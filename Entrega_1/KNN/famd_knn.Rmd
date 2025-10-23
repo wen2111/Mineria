@@ -1,0 +1,83 @@
+---
+title: "famd"
+author: "Laura Belmonte"
+date: "2025-10-23"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+```
+
+## Librerias 
+
+```{r}
+library("FactoMineR")
+library("factoextra")
+```
+
+
+```{r}
+load("~/Documents/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+data<-data_imputado
+data <- data[data$group == "train", ]
+data<- subset(data, select = -c(ID,Surname,group))
+#Ahora dividimos la base de datos en train i test 
+train_index <- sample(1:nrow(data), 0.7 * nrow(data))
+train <- data[train_index, ]
+test  <- data[-train_index, ]
+summary(train)
+```
+
+El análisis de datos mixtos mediante el método de Análisis Factorial de Datos Mixtos (FAMD, por sus siglas en inglés) es una técnica que permite analizar conjuntos de datos que contienen tanto variables cuantitativas como cualitativas. El FAMD combina elementos del Análisis de Componentes Principales (PCA) y el Análisis de Correspondencias Múltiples (MCA) para realizar esta tarea. Durante el análisis, se normalizan las variables cuantitativas y cualitativas para equilibrar su influencia. En este capítulo se presenta cómo realizar y visualizar el análisis factorial de datos mixtos utilizando los paquetes FactoMineR (para el análisis) y factoextra (para la visualización) en el entorno de programación R.
+
+# Data format
+
+```{r}
+head(train)
+str(train)
+```
+Este data frame contiene 4900 observaciones y 24 variables que describen clientes bancarios, incluyendo características demográficas, financieras y de comportamiento.
+
+En total tenemos un nuemro de 13 variables de tipo factor i 11 de tipo numerica. 
+
+# FAMD 
+
+```{r}
+res.famd <- FAMD(train,ncp = 20, graph = FALSE)
+print(res.famd)
+```
+
+El 80% se explica con 18 dimensiones. 
+
+# Visualization & Results
+
+```{r}
+eig.val <- get_eigenvalue(res.famd)
+eig.val
+fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
+  ggtitle("Varianza explicada por dimensión (FAMD)")
+```
+
+```{r}
+var <- get_famd_var(res.famd)
+var
+head(var$coord)
+head(var$cos2)
+head(var$contrib)
+fviz_famd_var(res.famd, repel = TRUE)
+```
+
+
+```{r}
+var <- get_famd_var(res.famd)
+var
+head(var$coord)
+head(var$cos2)
+head(var$contrib)
+fviz_famd_var(res.famd, repel = TRUE)
+fviz_contrib(res.famd, "var", axes = 1)
+```
+
+
