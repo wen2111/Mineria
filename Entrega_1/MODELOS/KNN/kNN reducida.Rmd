@@ -37,7 +37,6 @@ En la base de datos data_transformada, hay dos parte de datos, test original y t
 ```{r}
 set.seed(123)
 df <- subset(data, !is.na(Exited))
-
 df$Exited <- factor(ifelse(df$Exited == 1, "Yes", "No"), levels = c("Yes","No"))
 
 idx <- createDataPartition(df$Exited, p = 0.7, list = FALSE)
@@ -130,6 +129,35 @@ cm_cv_9
 - La precisión positiva (Pos Pred Value) es 0,60513 indica que de todos los clientes que el modelo predice como "Yes"alrededor del 60,513% realmente abandonaron.
 El índice Kappa es 0,2999 confirma que el acuerdo del modelo con las etiquetas reales es un poco mejor que el azar. Es muy bajo para ser un modelo robusto.
 - El modelo tiene exactitud balanceada 0,62295, refuerza la idea de que el modelo no consigue equilibrar bien la detección de ambas clases.
+
+
+# KNN Undersampling
+```{r}
+set.seed(123)
+ctrl_down <- trainControl(
+  method = "cv", number = 5,
+  classProbs = TRUE,
+  sampling = "down", # undersampling dentro de cada fold
+  summaryFunction = twoClassSummary
+)
+
+fit_knn_down <- train(
+  x = trainScaled, y = y_trainC,
+  method = "knn",
+  metric = "ROC",  # optimiza por AUC, mejor para desbalanceo
+  trControl = ctrl_down,
+  tuneGrid = expand.grid(k = seq(1, 21, by = 2))
+)
+
+# Predicción
+pred_prob_down <- predict(fit_knn_down, newdata = testScaled, type = "prob")
+pred_lab_down  <- predict(fit_knn_down, newdata = testScaled)
+
+# Evaluación (umbral 0.5)
+cm_down <- confusionMatrix(pred_lab_down, y_testC, positive = "Yes")
+cm_down
+```
+
 
 
 # KNN Oversampling 
