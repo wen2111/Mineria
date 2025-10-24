@@ -1,0 +1,197 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-10-24"
+---
+
+```{r}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(arules)
+library(dplyr)
+```
+# Adaptación de los datos
+```{r}
+data_ar <- subset(data_transformada, select = -c(Surname, ID, group))
+data_ar <- data_ar %>%
+  filter(!is.na(Exited))
+str(data_ar)
+```
+
+
+Para poder utilizar arules será necesario transformar nuestros datos numéricos y categóricos a factor. Para los valores numéricos se hará una partición en intervalos, los categóricos pasarán a ser factor directamente.
+
+Categóricas:
+```{r}
+data_ar <- data_ar %>%
+  mutate(across(where(is.character), as.factor))
+```
+Numéricas (transformación 1 a 1 con cortes personalizados)
+```{r}
+data_ar <- data_ar %>%
+  mutate(
+    Tenure = cut(Tenure,
+                breaks = c(0, 3, 6, 10),
+                labels = c("Nuevo (0-3 años)", "Medio (4-6 años)", "Antiguo (7-10 años)"),
+                include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    NetPromoterScore = cut(NetPromoterScore,
+                          breaks = c(-1, 6, 8, 10),  # -1 para incluir el 0
+                          labels = c("0-6", "7-8", "9-10"),
+                          include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    TransactionFrequency = cut(TransactionFrequency,
+                              breaks = c(0, 20, 30, 40, max(TransactionFrequency, na.rm = TRUE)),
+                              labels = c("0-20", "21-30", "31-40", "41+"),
+                              include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    Age = cut(Age,
+             breaks = c(0, 25, 35, 45, 55, 65, 100),
+             labels = c("18-25", "26-35", "36-45", "46-55", "56-65", "65+"),
+             include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    EstimatedSalary = cut(EstimatedSalary,
+                         breaks = c(0, 30000, 60000, 90000, 120000, 150000, 180000, 
+                                   max(EstimatedSalary, na.rm = TRUE)),
+                         labels = c("0-30K", "31-60K", "61-90K", "91-120K", 
+                                  "121-150K", "151-180K", "180K+"),
+                         include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    AvgTransactionAmount = cut(AvgTransactionAmount,
+                              breaks = quantile(AvgTransactionAmount, 
+                                              probs = c(0, 0.5, 0.8, 0.95, 1), 
+                                              na.rm = TRUE),
+                              labels = c("Bajo (0-50%)", "Medio (51-80%)", 
+                                       "Alto (81-95%)", "Muy Alto (96-100%)"),
+                              include.lowest = TRUE)
+  )
+
+data_ar <- data_ar %>%
+  mutate(
+    DigitalEngagementScore = cut(DigitalEngagementScore,
+                                breaks = c(0, 25, 50, 75, 100),
+                                labels = c("0-25", "26-50", "51-75", "76-100"),
+                                include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    CreditScore = cut(CreditScore,
+                     breaks = c(300, 580, 670, 740, 800, 850),
+                     labels = c("Muy Bajo (300-579)", "Bajo (580-669)", 
+                              "Medio (670-739)", "Bueno (740-799)", 
+                              "Excelente (800-850)"),
+                     include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    Balance = cut(Balance,
+                 breaks = c(0, 1000, 5000, 15000, 50000, Inf),
+                 labels = c("Muy Bajo (0-1K)", "Bajo (1-5K)", 
+                          "Medio (5-15K)", "Alto (15-50K)", 
+                          "Muy Alto (50K+)"),
+                 include.lowest = TRUE)
+  )
+
+str(data_ar)
+```
+Las 21 variables son factores. Puede comenzar el análisis por Association Rules.
+
+Transformación a una base de datos transaccional:
+```{r}
+data_tr <- as(data_ar,"transactions")
+data_tr
+```
+Lor registros ahora son transacciones, y las variables se han desdoblado en sus categorías, obteniendo así la estructura para la base transaccional.
+
+Un par de ejemplos de "transacciones"
+```{r}
+inspect(data_tr[1:2])
+```
+```{r}
+SIZE <- size(data_tr)
+summary(SIZE)
+```
+Todas las transacciones tienen 21 valores, por tanto la transformación se ha realizado correctamente (no hay valores faltantes).
+
+# Soporte mínimo
+
+El soporte mínimo es el umbral de frecuencia que debe superar un conjunto de artículos para ser considerado relevante en la minería de reglas de asociación. Garantiza que las reglas descubiertas representen patrones significativos y no ruido estadístico.
+
+Mediante una visualización se pretende ver cuántas veces aparece cada ítem en las transacciones, para poder elegir arbitrariamente un soporte mínimo que elimine el ruido estadístico.
+```{r}
+itemFrequencyPlot(data_tr, topN=100,type="absolute", cex.names = 0.6)
+```
+Para este caso se ha optado por un soporte mínimo de 0.05. Se trata del umbral por defecto en estadística para determinar significancia, y en esta base de datos en concreto puede servir para eliminar la cola de la derecha, compuesta por items prácticamente extintos. Todo lo que supere el 0.05 puede darnos información relevante sobre sus relaciones con otros items (sus reglas de asociación).
+
+## Reglas de asociación
+
+Se utilizará el soporte mínimo de 0.05 establecido en el apartado anterior, y únicamente interesa estudiar itemsets compuestos por entre 1 y 5 items de la base de datos transaccional:
+```{r}
+itemsets <- apriori(data = data_tr,
+                    parameter = list(support = 0.05,
+                                     minlen = 1,
+                                     maxlen = 5,
+                                     target = "frequent itemset"))
+summary(itemsets)
+```
+Se ha generado 52.000 itemsets de entre 1 y 5 items que superan el soporte mínimo. Unos 42.000 corresponden a itemsets de entre 4 y 5 items. Ojeamos los 5 itemsets más frecuentes:
+```{r}
+top_5_itemsets <- sort(itemsets, by = "support", decreasing = TRUE)[1:5]
+(inspect(top_5_itemsets))
+```
+- El 80% de los clientes no han emitido ninguna queja. 
+- Cerca del 80% de los clientes no han dejado el banco
+- Un 70% de los clientes tiene tarjeta de crédito
+- El 66% de los clientes tiene cuenta de ahorros
+- Un 64% de los clientes no han emitido ninguna queja y además se han quedado en el banco. 
+
+De los 5 itemsets más frecuentes únicamente se obtiene una información que implica más de una variable. Los clientes que no emiten quejas son propensos a quedarse en el banco.
+
+A continuación se comenzará a buscar reglas de asociación mediante itemsets de entre 2 y 5 items. Inicialmente se fijará una confianza alta (85%) y se mantendrá el soporte escogido (0.05)
+```{r}
+rules = apriori (data_tr, parameter = list (support=0.05, confidence=0.75, maxlen = 5, minlen=2))
+summary(rules)
+```
+
+Se ha generado 23140 reglas, la mayoría (+22.000) compuestas por 4 o 5 items. Únicamente se ha generado 14 reglas de 2 items. 
+
+Veamos 
+```{r}
+filtrado_reglas <- subset(x = rules,
+                           subset = rhs %pin% "Exited=1")
+filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
+inspect(head(filtrado_reglas_ordenadas,10))
+```
+No se ha obtenido reglas con la suficiente presencia que impliquen la salida del cliente del banco. Veamos si hay alguna que de pistas de qué ayuda a que un cliente decida quedarse:
+```{r}
+filtrado_reglas <- subset(x = rules,
+                           subset = rhs %pin% "Exited=0")
+filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
+inspect(filtrado_reglas_ordenadas)
+```
+
+Tampoco se ha detectado ninguna regla que implique que el cliente se quede en el banco.
+
+## Eliminar reglas redundantes
+
+Una regla es redundante cuando una regla más corta con el mismo consecuente tiene igual o mayor confianza. Si añadir condiciones no mejora la predicción, la regla extensa sobra.
+
+Por ejemplo, si tenemos dos reglas de asociación: la regla {A} -> {C} con una confianza del 80%, y la regla {A , B} -> {C} que también tiene una confianza del 80%. En este caso, la segunda regla es redundante, ya que la adición del ítem B en el antecedente no incrementa el poder predictivo de la regla hacia el consecuente C.
+```{r}
+reglas_redundantes <- rules[is.redundant(x = rules, measure = "confidence")]
+reglas_redundantes
+
+reglas_Noredund <- rules[!is.redundant(x = rules, measure = "confidence")]
+reglas_Noredund
+```
+El número de reglas se reduce drásticamente. Esto es muy positivo, dado que hemos eliminado información que estaba "duplicada" o que podemos simplificar.
+
