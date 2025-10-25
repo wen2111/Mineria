@@ -1,10 +1,12 @@
 ---
-title: "Untitled"
-output: html_document
+title: "Estudio de Reglas Asociativas"
+output:
+  pdf_document: default
+  html_document: default
 date: "2025-10-24"
 ---
 
-```{r}
+```{r, echo=FALSE}
 load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 library(arules)
 library(dplyr)
@@ -156,42 +158,110 @@ top_5_itemsets <- sort(itemsets, by = "support", decreasing = TRUE)[1:5]
 
 De los 5 itemsets más frecuentes únicamente se obtiene una información que implica más de una variable. Los clientes que no emiten quejas son propensos a quedarse en el banco.
 
-A continuación se comenzará a buscar reglas de asociación mediante itemsets de entre 2 y 5 items. Inicialmente se fijará una confianza alta (85%) y se mantendrá el soporte escogido (0.05)
+A continuación se comenzará a buscar reglas de asociación mediante itemsets de entre 2 y 5 items. Inicialmente se fijará una confianza alta (80%) y se mantendrá el soporte escogido (0.05)
 ```{r}
-rules = apriori (data_tr, parameter = list (support=0.05, confidence=0.75, maxlen = 5, minlen=2))
+rules = apriori (data_tr, parameter = list (support=0.05, confidence=0.80, maxlen = 5, minlen=2))
 summary(rules)
 ```
 
-Se ha generado 23140 reglas, la mayoría (+22.000) compuestas por 4 o 5 items. Únicamente se ha generado 14 reglas de 2 items. 
-
-Veamos 
-```{r}
-filtrado_reglas <- subset(x = rules,
-                           subset = rhs %pin% "Exited=1")
-filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
-inspect(head(filtrado_reglas_ordenadas,10))
-```
-No se ha obtenido reglas con la suficiente presencia que impliquen la salida del cliente del banco. Veamos si hay alguna que de pistas de qué ayuda a que un cliente decida quedarse:
-```{r}
-filtrado_reglas <- subset(x = rules,
-                           subset = rhs %pin% "Exited=0")
-filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
-inspect(filtrado_reglas_ordenadas)
-```
-
-Tampoco se ha detectado ninguna regla que implique que el cliente se quede en el banco.
+Se ha generado 42462 reglas, la mayoría (+40.000) compuestas por 4 o 5 items.
 
 ## Eliminar reglas redundantes
 
 Una regla es redundante cuando una regla más corta con el mismo consecuente tiene igual o mayor confianza. Si añadir condiciones no mejora la predicción, la regla extensa sobra.
 
 Por ejemplo, si tenemos dos reglas de asociación: la regla {A} -> {C} con una confianza del 80%, y la regla {A , B} -> {C} que también tiene una confianza del 80%. En este caso, la segunda regla es redundante, ya que la adición del ítem B en el antecedente no incrementa el poder predictivo de la regla hacia el consecuente C.
-```{r}
-reglas_redundantes <- rules[is.redundant(x = rules, measure = "confidence")]
-reglas_redundantes
 
+```{r}
 reglas_Noredund <- rules[!is.redundant(x = rules, measure = "confidence")]
 reglas_Noredund
 ```
-El número de reglas se reduce drásticamente. Esto es muy positivo, dado que hemos eliminado información que estaba "duplicada" o que podemos simplificar.
+
+El número de reglas se reduce drásticamente (ha quedado 1/3 de las reglas). Esto es muy positivo, dado que hemos eliminado información que estaba "duplicada" o que podemos simplificar.
+
+## Detección de patrones
+
+### Patrones de abandono del banco
+
+Queremos encontrar patrones que nos demuestren qué características debe tener un cliente para las variables de la base de datos para que sea altamente probable que deje el banco, y así poder tomar medidas para que eso no suceda.
+```{r}
+filtrado_reglas <- subset(x = reglas_Noredund,
+                           subset = rhs %pin% "Exited=1")
+filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
+inspect(head(filtrado_reglas_ordenadas,10))
+```
+
+No se han obtenido reglas que cumplan los parámetros de soporte mínimo 0.05 y confianza 80%. Esto puede deberse a que el nivel de confianza exigido es muy elevado, considerando que los clientes que abandonan representan solo el 20% de la base de datos.
+
+Una confianza del 50% ya identificaría combinaciones donde la probabilidad de abandono es 2.5 veces superior a la tasa base (pasando de 20% a 50%), lo que constituye un patrón de riesgo significativo para el negocio. También se bajará el soporte a la mitad para recoger más reglas que podrían ser importantes pero quedan escondidas dado el desbalanceo de la variable Exited.
+
+Veamos si ahora se detectan reglas asociativas.
+
+```{r}
+rules = apriori (data_tr, parameter = list (support=0.025, confidence=0.50, maxlen = 5, minlen=2))
+summary(rules)
+```
+Evidentemente se generan más reglas (de ~42.000 a 155.293).
+
+```{r}
+reglas_Noredund <- rules[!is.redundant(x = rules, measure = "confidence")]
+filtrado_reglas <- subset(x = reglas_Noredund,
+                           subset = rhs %pin% "Exited=1")
+filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
+inspect(head(filtrado_reglas_ordenadas,10))
+```
+Se ha obtenido 4 reglas, todas ellas a tener en cuenta dado su elevado valor lift.
+
+El lift es cercano a 2.5, lo que indica que la probabilidad de abandono entre clientes que cumplen el antecedente es 2.5 veces mayor que la probabilidad de abandono en la población general. Sabiendo esto, las reglas generadas tienen bastante valor. Son las siguientes:
+
+- Un cliente de entre 46-55 años inactivo es mas probable (2.53 veces mas) que deje el banco, aunque no haya emitido ninguna queja
+- Cliente de entre 46-55 años que posee cuenta de ahorros y tiene un producto también es probable que busque otros bancos (hipótesis: alternativas mejores en el mercado)
+
+
+La recomendación que se haría a la entidad bancaria es centrar sus esfuerzos en ofrecer unas condiciones más competitivas a clientes entre los 46-55 años, que tengan cuenta de ahorros y un solo producto. El hecho de que no emitan quejas no significa que sea más probable que se queden.
+
+### Patrones de permanencia en el banco
+
+De la misma manera que interesa saber qué patrones hacen más probable que un cliente se vaya, es muy importante saber qué se está haciendo bien. ¿Qué contenta al cliente y le hace permanecer en el banco?
+
+
+Dado que el 80% de los clientes no se van, será necesario un nivel de confianza mucho más elevado que en el caso anterior para encontrar reglas significativas. Impondremos un soporte mínimo de 0.1 y una confianza del 90%
+
+```{r}
+rules = apriori (data_tr, parameter = list (support=0.1, confidence=0.85, maxlen = 5, minlen=2))
+summary(rules)
+```
+```{r}
+reglas_Noredund <- rules[!is.redundant(x = rules, measure = "confidence")]
+filtrado_reglas <- subset(x = reglas_Noredund,
+                           subset = rhs %pin% "Exited=0")
+filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
+inspect(head(filtrado_reglas_ordenadas,10))
+```
+En este caso los lift son mas bajos, pero tiene sentido si partimos de la premisa del desbalanceo (80% de Exited es 0). Una confianza de 0.94 nos dice que un cliente con esos antecedentes tiene un 94% de probabilidades de quedarse contra el 80% si no tenemos los datos.
+
+- En todas las reglas aparecen clientes con 2 productos. 
+- Clientes con un balance muy bajo (<1.000 € en la cuenta) son propensos a quedarse.
+- Clientes franceses con dos productos y poco dinero en la cuenta son fieles al banco.
+
+ Diversas reglas refuerzan la tesis de que clientes activos y con más de un producto son más fieles al banco. Una buena iniciativa sería promover mediante ofertas que el cliente esté más conectado al banco mediante la titularidad de más de un producto.
+ 
+## Conclusiones reglas asociativas con salida del banco como consecuente
+
+### Clientes con potencial abandono
+
+- Un cliente de entre 46-55 años inactivo es mas probable (2.53 veces mas) que deje el banco, aunque no haya emitido ninguna queja
+- Cliente de entre 46-55 años que posee cuenta de ahorros y tiene un producto también es probable que busque otros bancos (hipótesis: alternativas mejores en el mercado)
+
+### Clientes que tienden a ser fieles al banco
+
+Diversas reglas refuerzan la tesis de que clientes activos y con más de un producto son más fieles al banco. Una buena iniciativa sería promover mediante ofertas que el cliente esté más conectado al banco mediante la titularidad de más de un producto.
+
+Clientes casados o con poco dinero tienden a quedarse en el banco.
+
+## Significancia de variables
+
+Se observa que las variables que aparecen en las reglas de asociación mediante el estudio de la base de datos en forma transaccional coinciden con las declaradas como significativas para la explicación de Exited en otros puntos del proyecto habiendo utilizado otros métodos estadísticos. 
+
+Esto es buena señal, dado que se ha podido comprobar la relevancia de estas variables mediante dos caminos estadísticos independientes entre sí, hecho que nos permite reforzar el planteamiento realizado anteriormente sobre significancia estadística.
 
