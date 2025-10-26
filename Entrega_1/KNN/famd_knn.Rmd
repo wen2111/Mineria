@@ -62,22 +62,11 @@ fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
 
 ```{r}
 var <- get_famd_var(res.famd)
-var
 head(var$coord)
 head(var$cos2)
 head(var$contrib)
 fviz_famd_var(res.famd, repel = TRUE)
 ```
 
-
-```{r}
-var <- get_famd_var(res.famd)
-var
-head(var$coord)
-head(var$cos2)
-head(var$contrib)
-fviz_famd_var(res.famd, repel = TRUE)
-fviz_contrib(res.famd, "var", axes = 1)
-```
 
 
