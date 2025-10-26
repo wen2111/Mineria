@@ -1,24 +1,20 @@
 ---
 title: "Preprocessing Univ"
 output:
-  html_document:
-    toc: yes
-    toc_float: yes
-    toc_depth: 3
-    number_sections: yes
   pdf_document:
-    toc: yes
-    toc_depth: 3
-    number_sections: yes
+    toc: true
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
 date: "2025-10-01"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-if (rstudioapi::isAvailable()) {
-  setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-}
 ```
+
+El objetivo de este análisis es compararlo con el previo a la imputación, y comprovar si ha habido cambios.
 # Detección de outliers univariante: variables numéricas
 ```{r, include=FALSE}
 library(lawstat)
@@ -26,7 +22,10 @@ library(ggplot2)
 library(moments)
 library(EnvStats)
 library(here)
-load(here("DATA", "data.RData"))
+library(rstudioapi)
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+load("~/GitHub/Mineria/DATA/data.RData")
+
 ```
 Variables a estudiar:
 ```{r}
@@ -35,53 +34,21 @@ varNum<-c("Age", "CreditScore", "Tenure","EstimatedSalary", "Balance", "NumOfPro
           "ComplaintsCount","NetPromoterScore")
 ```
 ## Simetría de las variables
-Primero ejecutamos un test de simetría para saber qué método usar para la detección de outliers en cada variable.
+Primero haremos una comparación entre los estadísticos de simetría para cada variable.
 ```{r}
-p<-sapply(varNum, function(v) symmetry.test(data[[v]])$p.value)
-symmetry_test <- data.frame(
-  p.value = p,
-  significative=(p<0.05)
+tabla_comparacion <- data.frame(
+  Skewness_Antes = round(sapply(varNum, function(v) skewness(data[[v]], na.rm = TRUE)), 3),
+  Skewness_Despues = round(sapply(varNum, function(v) skewness(data_imputado[[v]])), 3),
+  Diferencia = round(sapply(varNum, function(v) {
+    skewness(data_imputado[[v]]) - skewness(data[[v]], na.rm = TRUE)
+  }), 3)
 )
-symmetry_test <- symmetry_test[order(symmetry_test$p.value), ]
-print(symmetry_test)
+
+print(tabla_comparacion)
 ```
+Los resultados son prácticamente idénticos y las diferencias asignables a la aleatoriedad. Se observa un cambio mayor en Avg transaction amount, aunque a nivel visual ambas distribuciones son idénticas, y en cualquier caso continúa siendo muy asimétrica.
 
-Parece que únicamente CreditScore, TransactionFrequency, Tenure y EstimatedSalary han soportado el test y pueden ser consideradas simétricas. No obstante, el p-valor de CreditScore y quizás el de TransactionFrequency merecen una inspección más a fondo.
-
-Todas las variables con p-valor inferior a 0.05 rechazan claramente simetría.
-
-Ahora, para reafirmar o terminar de definir las conclusiones de este test, realizaremos una inspección visual de las distribuciones para evaluar su simetría:
-
-```{r}
-n_vars <- length(varNum)
-ncol <- 2
-nrow <- ceiling(n_vars / ncol)
-
-par(mfrow = c(nrow, ncol), mar = c(4, 4, 2, 1))
-
-for (var in varNum) {
-  hist(data[[var]], 
-       main = paste(var),
-       xlab = var,
-       col = "lightblue",
-       breaks = 20)
-}
-```
-NumOfProducts y ComplaintsCount son conteos (variables discretas), por lo que no tiene mucho sentido aplicar métodos basados en cálculos numéricos
-
-Pese a que TransactionFrequency, Tenure y EstimatedSalary pueden ser validadas como simétricas, CreditScore es algo confusa. Realizaremos un último test:
-```{r}
-skewness(data$CreditScore, na.rm = TRUE)
-```
-El valor, muy cercano a 0, de la prueba de Fisher nos permite confirmar CreditScore como variable simétrica.
-
-No obstante, se observa una situación extraña. La distribución de Balance parece mostrar la existencia de dos poblaciones. Aproximadamente un 25% de la población tiene su cuenta en 0, y el resto parece distribuirse de manera ciertamente simétrica. 
-
-```{r}
-sum(data$Balance == 0, na.rm = TRUE)
-```
-
-Dado que son valores posibles (clientes con la cuenta en 0) y a nivel del contexto del estudio es algo que podemos entender como normal, no clasificaremos dichos valores como outliers pese a estar alejados de la población que no tiene Balance=0 en la cuenta.
+El análisis de las distribuciones será el mismo que en el análisis previo, puesto que en la visualización de las distribuciones previas y posteriores a la imputación se observa que son prácticamente idénticas.
 
 Ahora procedemos a dividir nuestras variables numéricas en simétricas y no simétricas para continuar con el análisis adecuado en cada caso:
 
@@ -90,9 +57,12 @@ symmetric<-c("TransactionFrequency", "Tenure", "EstimatedSalary", "CreditScore")
 non_symmetric<-c("Age","AvgTransactionAmount","DigitalEngagementScore", "NetPromoterScore")
 varNum
 ```
+
 ## Outliers variables simétricas
+
 Procedemos a la detección de outliers para las variables simétricas. Para ello utilizaremos el rango intercuartílico (IQR), de modo que los valores que queden fuera de dicho intervalo serán reconocidos como outliers univariantes
 ```{r}
+data<-data_imputado
 outlier_positions <- list()
 IQROutlier <- function(variable, rmnas = TRUE) {
   IQ <- IQR(variable, na.rm = rmnas)
@@ -118,19 +88,11 @@ outlier_positions
 longitudes_s <- sapply(outlier_positions, length)
 longitudes_s
 ```
-Las variables EstimatedSalary y Tenure no tienen outliers. 
+Vemos como el resultado es exactamente el mismo que en el análisis previo, añadiendo aproximadamente un 30% a cada variable. Estos son los outliers que podíamos considerar como naturales. Es buena señal que el número aumente proporcionalmente al del número de datos al haber imputado el 30% de NA.
 
-TransactionFrequency y CreditScore tienen una proporcion muy baja de outliers, pero puede tener sentido dado que son distribuciones muy compactas:
-```{r}
-par(mfrow = c(1, 2))
-boxplot(data$TransactionFrequency, main = "TransactionFrequency")
-boxplot(data$CreditScore, main = "CreditScore")
-```
 ## Outliers variables no simétricas
 
-Ahora, para las variables no simétricas, utilizaremos el método del Hampel Identifier. Este método usa la mediana y MAD (Median Absolute Deviation) por ser estadísticos robustos que no se ven afectados por la asimetría de los datos. A diferencia de la media y desviación estándar, no asumen distribución normal y son resistentes a valores extremos. Esto permite detectar outliers reales sin que la forma sesgada de la distribución afecte los límites de detección.
-
-Para el parámetro que determina cuan estricto es nuestro filtro hemos escogido el umbral 3.5 tras comprobar que con 3 detectábamos demasiados outliers (6-8%), perdiendo datos válidos, mientras que con 4 nos quedábamos cortos, arriesgándonos no identificar outliers reales. El valor 3.5 nos proporciona una proporción sensata, manteniendo alrededor del 4% de outliers.
+Utilizaremos el mismo método que en el análisis previo.
 ```{r}
 hampelOutlier <- function(variable, mad_constant = 1, threshold = 3.5) {
   med <- median(variable, na.rm = TRUE)
@@ -155,7 +117,8 @@ outlier_positions_non_symmetric
 longitudes_ns <- sapply(outlier_positions_non_symmetric, length)
 longitudes_ns
 ```
-Vemos que, con los valores de los parámetros escogidos, obtenemos una proporción de cerca de un 4% de outliers, exepto para DigitalEngagementScore, que parece una distribución más densa.
+Misma conclusión que para las variables simétricas: el aumento de outliers es proporcional al aumento de datos y sigue estando dentro del recuento aceptable. 
+
 ## Verificación por proporciones respecto a la variable salida
 
 Ahora haremos una comparación de las proporciones segun el grupo (train o test) para evaluar si hay alguna anomalía.
@@ -208,7 +171,8 @@ for (var in names(todas_outliers)) {
 # Mostrar resultados
 proporcion_outliers_completa
 ```
-Vemos que las proporciones tienen bastante sentido si las miramos segun el grupo train/test.
+Las proporciones se mantienen
+
 ## Detección de valores imposibles
 
 Ahora haremos un summary de las variables donde hemos detectado outliers para determinar si hay valores imposibles (como una persona con edad 180).
@@ -217,6 +181,12 @@ Ahora haremos un summary de las variables donde hemos detectado outliers para de
 variables_con_outliers <- names(todas_outliers)
 summary(data[variables_con_outliers])
 ```
-A partir de estos datos y del entendimiento de la naturaleza de las variables expuestas:
+Sigue sin haber valores imposibles
 
-Rechazamos que haya valores imposibles: aceptamos los outliers como producto de la aleatoriedad natural.
+## Conclusión del análisis de outliers post imputación
+
+- Se respetan las proporciones previas.
+- Sigue sin haber valores imposibles.
+- Son outliers que se pueden aceptar como normales.
+
+Estas conclusiones sumadas al análisis del ajuste de la distribución imputada nos permiten **validar** la imputación multivariante mediante el método MICE.
