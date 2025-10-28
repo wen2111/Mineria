@@ -242,6 +242,7 @@ levels(train_reducida$Exited)
 
 
 # particion
+data<-da
 set.seed(123)
 index <- createDataPartition(train_reducida$Exited, p = 0.7, list = FALSE)
 train_reducida2 <- train_reducida[index, ] # train interno
