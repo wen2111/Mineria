@@ -132,14 +132,18 @@ Mediante una visualización se pretende ver cuántas veces aparece cada ítem en
 ```{r}
 itemFrequencyPlot(data_tr, topN=100,type="absolute", cex.names = 0.6)
 ```
-Para este caso se ha optado por un soporte mínimo de 0.05. Se trata del umbral por defecto en estadística para determinar significancia, y en esta base de datos en concreto puede servir para eliminar la cola de la derecha, compuesta por items prácticamente extintos. Todo lo que supere el 0.05 puede darnos información relevante sobre sus relaciones con otros items (sus reglas de asociación).
+Normalmente, a la vista del gráfico, se establecería un soporte mínimo de 0.05 o diferente dependiendo del caso de estudio. En este caso, el desbalanceo nos obliga a ser más permisivos.
+
+Se es consciente de la problemática que supone el desbalanceo para la variable exited, por lo que será necesario aplicar un soporte mínimo **extremadamente bajo**. Se ha escogido 0.0125, y se fija una confianza también permisiva (0.7). De este modo se ponen unos filtros laxos para detectar reglas donde el consecuente sea que el cliente se va del banco (Exited=1) dada la circunstancia del desbalanceo.
 
 ## Reglas de asociación
 
-Se utilizará el soporte mínimo de 0.05 establecido en el apartado anterior, y únicamente interesa estudiar itemsets compuestos por entre 1 y 5 items de la base de datos transaccional:
+Se utilizan los parámetros establecidos y justificados en el apartado anterior con la esperanza de obtener reglas que den informacion valiosa sobre las circunstancias que llevan a un cliente a quedarse o irse del banco. Los parámetros se fijan para cualquier tipo de búsqueda en lhs o consecuente.
+
+Los itemsets a estudiar serán de longitud entre 2 y 5.
 ```{r}
 itemsets <- apriori(data = data_tr,
-                    parameter = list(support = 0.05,
+                    parameter = list(support = 0.0125,
                                      minlen = 1,
                                      maxlen = 5,
                                      target = "frequent itemset"))
@@ -158,9 +162,9 @@ top_5_itemsets <- sort(itemsets, by = "support", decreasing = TRUE)[1:5]
 
 De los 5 itemsets más frecuentes únicamente se obtiene una información que implica más de una variable. Los clientes que no emiten quejas son propensos a quedarse en el banco.
 
-A continuación se comenzará a buscar reglas de asociación mediante itemsets de entre 2 y 5 items. Inicialmente se fijará una confianza alta (80%) y se mantendrá el soporte escogido (0.05)
+A continuación se comenzará a buscar reglas de asociación mediante itemsets de entre 2 y 5 items. 
 ```{r}
-rules = apriori (data_tr, parameter = list (support=0.05, confidence=0.80, maxlen = 5, minlen=2))
+rules = apriori (data_tr, parameter = list (support=0.0125, confidence=0.7, maxlen = 5, minlen=2))
 summary(rules)
 ```
 
@@ -191,48 +195,15 @@ filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
 inspect(head(filtrado_reglas_ordenadas,10))
 ```
 
-No se han obtenido reglas que cumplan los parámetros de soporte mínimo 0.05 y confianza 80%. Esto puede deberse a que el nivel de confianza exigido es muy elevado, considerando que los clientes que abandonan representan solo el 20% de la base de datos.
-
-Una confianza del 50% ya identificaría combinaciones donde la probabilidad de abandono es 2.5 veces superior a la tasa base (pasando de 20% a 50%), lo que constituye un patrón de riesgo significativo para el negocio. También se bajará el soporte a la mitad para recoger más reglas que podrían ser importantes pero quedan escondidas dado el desbalanceo de la variable Exited.
-
-Veamos si ahora se detectan reglas asociativas.
-
-```{r}
-rules = apriori (data_tr, parameter = list (support=0.025, confidence=0.50, maxlen = 5, minlen=2))
-summary(rules)
-```
-Evidentemente se generan más reglas (de ~42.000 a 155.293).
-
-```{r}
-reglas_Noredund <- rules[!is.redundant(x = rules, measure = "confidence")]
-filtrado_reglas <- subset(x = reglas_Noredund,
-                           subset = rhs %pin% "Exited=1")
-filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
-inspect(head(filtrado_reglas_ordenadas,10))
-```
-Se ha obtenido 4 reglas, todas ellas a tener en cuenta dado su elevado valor lift.
-
-El lift es cercano a 2.5, lo que indica que la probabilidad de abandono entre clientes que cumplen el antecedente es 2.5 veces mayor que la probabilidad de abandono en la población general. Sabiendo esto, las reglas generadas tienen bastante valor. Son las siguientes:
-
-- Un cliente de entre 46-55 años inactivo es mas probable (2.53 veces mas) que deje el banco, aunque no haya emitido ninguna queja
-- Cliente de entre 46-55 años que posee cuenta de ahorros y tiene un producto también es probable que busque otros bancos (hipótesis: alternativas mejores en el mercado)
-
-
-La recomendación que se haría a la entidad bancaria es centrar sus esfuerzos en ofrecer unas condiciones más competitivas a clientes entre los 46-55 años, que tengan cuenta de ahorros y un solo producto. El hecho de que no emitan quejas no significa que sea más probable que se queden.
+No se han obtenido reglas que cumplan los parámetros de soporte mínimo 0.0125 y confianza 70%. Dado que los niveles se consideran como suficientemente flexibles para hacer frente al desbalanceo, se concluye que NO se puede encontrar mediante Association Rules reglas significativas que tengan como consecuente que el cliente abandone el banco
 
 ### Patrones de permanencia en el banco
 
 De la misma manera que interesa saber qué patrones hacen más probable que un cliente se vaya, es muy importante saber qué se está haciendo bien. ¿Qué contenta al cliente y le hace permanecer en el banco?
 
-
-Dado que el 80% de los clientes no se van, será necesario un nivel de confianza mucho más elevado que en el caso anterior para encontrar reglas significativas. Impondremos un soporte mínimo de 0.1 y una confianza del 90%
+Se utlizan las mismas reglas encontradas con los parámetros fijados y justificados previamente.
 
 ```{r}
-rules = apriori (data_tr, parameter = list (support=0.1, confidence=0.85, maxlen = 5, minlen=2))
-summary(rules)
-```
-```{r}
-reglas_Noredund <- rules[!is.redundant(x = rules, measure = "confidence")]
 filtrado_reglas <- subset(x = reglas_Noredund,
                            subset = rhs %pin% "Exited=0")
 filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")

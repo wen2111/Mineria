@@ -17,9 +17,9 @@ library("FactoMineR")
 library("factoextra")
 ```
 
-
+# Imputado
 ```{r}
-load("~/Documents/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+# load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 data<-data_imputado
 data <- data[data$group == "train", ]
 data<- subset(data, select = -c(ID,Surname,group))
@@ -27,6 +27,7 @@ data<- subset(data, select = -c(ID,Surname,group))
 train_index <- sample(1:nrow(data), 0.7 * nrow(data))
 train <- data[train_index, ]
 test  <- data[-train_index, ]
+train <- train[,-1]
 summary(train)
 ```
 
@@ -42,20 +43,22 @@ Este data frame contiene 4900 observaciones y 24 variables que describen cliente
 
 En total tenemos un nuemro de 13 variables de tipo factor i 11 de tipo numerica. 
 
-# FAMD 
+## FAMD 
 
 ```{r}
+<<<<<<< HEAD
 train<-train[,-1]
 res.famd <- FAMD(train,ncp = 20, graph = FALSE)
+=======
+res.famd <- FAMD(train,ncp = 19, graph = FALSE)
+>>>>>>> 72a9d1b8142001efe1efd2a2d6a7aea622a2725d
 print(res.famd)
 eig.val <- get_eigenvalue(res.famd)
 eig.val
 famd_features <- res.famd$ind$coord[1:19,]
 ```
 
-El 80% se explica con 18 dimensiones. 
-
-# Visualization & Results
+## Visualization & Results
 
 ```{r}
 eig.val <- get_eigenvalue(res.famd)
@@ -65,13 +68,95 @@ fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
   ggtitle("Varianza explicada por dimensión (FAMD)")
 ```
 
+Para los datos imputados antes de aplicar elknn, se observa que se necesita un total de 19 dimensiones para explicar aproximar el 85% explicado de la variabilidad. 
+
 ```{r}
-var <- get_famd_var(res.famd)
-head(var$coord)
-head(var$cos2)
-head(var$contrib)
-fviz_famd_var(res.famd, repel = TRUE)
+ind_imputado <- get_famd_ind(res.famd)
+ind_imputado
+```
+```{r}
+BD_imputado <- ind_transformada$coord
 ```
 
 
+# Reducido
+```{r}
+data<-data_reducida
+#Ahora dividimos la base de datos en train i test 
+train_index <- sample(1:nrow(data), 0.7 * nrow(data))
+train <- data[train_index, ]
+test  <- data[-train_index, ]
+train <- train[,-3]
+summary(train)
+```
+
+## FAMD 
+
+```{r}
+res.famd <- FAMD(train,ncp = 19, graph = FALSE)
+print(res.famd)
+```
+
+## Visualization & Results
+
+```{r}
+eig.val <- get_eigenvalue(res.famd)
+eig.val
+fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
+  ggtitle("Varianza explicada por dimensión (FAMD)")
+```
+
+Para los datos reducidos antes de aplicar el knn, se observa que se necesita un total de 8 dimensiones para explicar aproximar el 100% explicado de la variabilidad. 
+
+```{r}
+ind_reducida <- get_famd_ind(res.famd)
+ind_reducida
+```
+```{r}
+BD_reducida <- ind_reducida$coord
+```
+
+# transformada
+```{r}
+data<-data_transformada
+data <- data[data$group == "train", ]
+data<- subset(data, select = -c(ID,Surname,group))
+#Ahora dividimos la base de datos en train i test 
+train_index <- sample(1:nrow(data), 0.7 * nrow(data))
+train <- data[train_index, ]
+test  <- data[-train_index, ]
+train <- train[,-1]
+summary(train)
+```
+
+## FAMD 
+
+```{r}
+res.famd <- FAMD(train,ncp = 20, graph = FALSE)
+print(res.famd)
+```
+
+## Visualization & Results
+
+```{r}
+eig.val <- get_eigenvalue(res.famd)
+eig.val
+fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
+  ggtitle("Varianza explicada por dimensión (FAMD)")
+```
+Para los datos transformada antes de aplicar el knn, se observa que se necesita un total de 20 dimensiones para explicar aproximar el 85% explicado de la variabilidad. 
+
+```{r}
+ind_transformada <- get_famd_ind(res.famd)
+ind_transformada
+```
+
+```{r}
+BD_transformada <- ind_transformada$coord
+
+```
+
+```{r}
+save.image("famd_data.Rdata")
+```
 
