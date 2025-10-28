@@ -22,7 +22,7 @@ library("factoextra")
 # load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 data<-data_imputado
 data <- data[data$group == "train", ]
-data<- subset(data, select = -c(ID,Surname,group))
+data<- subset(data, select = -c(group))
 #Ahora dividimos la base de datos en train i test 
 train_index <- sample(1:nrow(data), 0.7 * nrow(data))
 train <- data[train_index, ]
@@ -32,8 +32,6 @@ summary(train)
 ```
 
 El análisis de datos mixtos mediante el método de Análisis Factorial de Datos Mixtos (FAMD, por sus siglas en inglés) es una técnica que permite analizar conjuntos de datos que contienen tanto variables cuantitativas como cualitativas. El FAMD combina elementos del Análisis de Componentes Principales (PCA) y el Análisis de Correspondencias Múltiples (MCA) para realizar esta tarea. Durante el análisis, se normalizan las variables cuantitativas y cualitativas para equilibrar su influencia. En este capítulo se presenta cómo realizar y visualizar el análisis factorial de datos mixtos utilizando los paquetes FactoMineR (para el análisis) y factoextra (para la visualización) en el entorno de programación R.
-
-# Data format
 
 ```{r}
 head(train)
@@ -46,37 +44,22 @@ En total tenemos un nuemro de 13 variables de tipo factor i 11 de tipo numerica.
 ## FAMD 
 
 ```{r}
-<<<<<<< HEAD
-train<-train[,-1]
-res.famd <- FAMD(train,ncp = 20, graph = FALSE)
-=======
-res.famd <- FAMD(train,ncp = 19, graph = FALSE)
->>>>>>> 72a9d1b8142001efe1efd2a2d6a7aea622a2725d
-print(res.famd)
-eig.val <- get_eigenvalue(res.famd)
-eig.val
-famd_features <- res.famd$ind$coord[1:19,]
+res.famd_imp <- FAMD(train,ncp = Inf, graph = FALSE)
+print(res.famd_imp)
 ```
+
 
 ## Visualization & Results
 
 ```{r}
-eig.val <- get_eigenvalue(res.famd)
-eig.val
-famd_features <- res.famd$ind$coord[,1:19]
-fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
+eig.val_imp <- get_eigenvalue(res.famd_imp)
+eig.val_imp
+famd_features_imp <- res.famd_imp$ind$coord
+fviz_screeplot(res.famd_imp, addlabels = TRUE, ylim = c(0, 15)) +
   ggtitle("Varianza explicada por dimensión (FAMD)")
 ```
 
 Para los datos imputados antes de aplicar elknn, se observa que se necesita un total de 19 dimensiones para explicar aproximar el 85% explicado de la variabilidad. 
-
-```{r}
-ind_imputado <- get_famd_ind(res.famd)
-ind_imputado
-```
-```{r}
-BD_imputado <- ind_transformada$coord
-```
 
 
 # Reducido
@@ -93,34 +76,58 @@ summary(train)
 ## FAMD 
 
 ```{r}
-res.famd <- FAMD(train,ncp = 19, graph = FALSE)
-print(res.famd)
+res.famd_red <- FAMD(train,ncp = Inf, graph = FALSE)
+print(res.famd_red)
 ```
 
 ## Visualization & Results
 
 ```{r}
-eig.val <- get_eigenvalue(res.famd)
-eig.val
-fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
+eig.val_red <- get_eigenvalue(res.famd_red)
+eig.val_red
+famd_features_red <- res.famd_red$ind$coord
+fviz_screeplot(res.famd_red, addlabels = TRUE, ylim = c(0, 15)) +
   ggtitle("Varianza explicada por dimensión (FAMD)")
 ```
 
 Para los datos reducidos antes de aplicar el knn, se observa que se necesita un total de 8 dimensiones para explicar aproximar el 100% explicado de la variabilidad. 
 
+# Reducido plus
+
 ```{r}
-ind_reducida <- get_famd_ind(res.famd)
-ind_reducida
+data<-data_reducida_plus
+data <- data[data$group == "train", ]
+data<- subset(data, select = -c(group))
+#Ahora dividimos la base de datos en train i test 
+train_index <- sample(1:nrow(data), 0.7 * nrow(data))
+train <- data[train_index, ]
+test  <- data[-train_index, ]
+train <- train[,-3]
+summary(train)
 ```
+
+## FAMD 
+
 ```{r}
-BD_reducida <- ind_reducida$coord
+res.famd_p <- FAMD(train,ncp = Inf, graph = FALSE)
+print(res.famd_p)
+```
+
+## Visualization & Results
+
+```{r}
+eig.val_p <- get_eigenvalue(res.famd_p)
+eig.val_p
+famd_features_p <- res.famd_p$ind$coord
+fviz_screeplot(res.famd_p, addlabels = TRUE, ylim = c(0, 15)) +
+  ggtitle("Varianza explicada por dimensión (FAMD)")
 ```
 
 # transformada
 ```{r}
 data<-data_transformada
 data <- data[data$group == "train", ]
-data<- subset(data, select = -c(ID,Surname,group))
+data<- subset(data, select = -c(group))
 #Ahora dividimos la base de datos en train i test 
 train_index <- sample(1:nrow(data), 0.7 * nrow(data))
 train <- data[train_index, ]
@@ -132,29 +139,20 @@ summary(train)
 ## FAMD 
 
 ```{r}
-res.famd <- FAMD(train,ncp = 20, graph = FALSE)
-print(res.famd)
+res.famd_t <- FAMD(train,ncp = Inf, graph = FALSE)
+print(res.famd_t)
 ```
 
 ## Visualization & Results
 
 ```{r}
-eig.val <- get_eigenvalue(res.famd)
-eig.val
-fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
+eig.val_t <- get_eigenvalue(res.famd_t)
+eig.val_t
+famd_features_t <- res.famd_t$ind$coord
+fviz_screeplot(res.famd_t, addlabels = TRUE, ylim = c(0, 15)) +
   ggtitle("Varianza explicada por dimensión (FAMD)")
 ```
 Para los datos transformada antes de aplicar el knn, se observa que se necesita un total de 20 dimensiones para explicar aproximar el 85% explicado de la variabilidad. 
-
-```{r}
-ind_transformada <- get_famd_ind(res.famd)
-ind_transformada
-```
-
-```{r}
-BD_transformada <- ind_transformada$coord
-
-```
 
 ```{r}
 save.image("famd_data.Rdata")
