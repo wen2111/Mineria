@@ -45,8 +45,12 @@ En total tenemos un nuemro de 13 variables de tipo factor i 11 de tipo numerica.
 # FAMD 
 
 ```{r}
+train<-train[,-1]
 res.famd <- FAMD(train,ncp = 20, graph = FALSE)
 print(res.famd)
+eig.val <- get_eigenvalue(res.famd)
+eig.val
+famd_features <- res.famd$ind$coord[1:19,]
 ```
 
 El 80% se explica con 18 dimensiones. 
@@ -56,6 +60,7 @@ El 80% se explica con 18 dimensiones.
 ```{r}
 eig.val <- get_eigenvalue(res.famd)
 eig.val
+famd_features <- res.famd$ind$coord[,1:19]
 fviz_screeplot(res.famd, addlabels = TRUE, ylim = c(0, 15)) +
   ggtitle("Varianza explicada por dimensión (FAMD)")
 ```

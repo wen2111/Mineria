@@ -39,7 +39,7 @@ En la base de datos data_transformada, hay dos parte de datos, test original y t
 ```{r}
 set.seed(123)
 train_df <- data[data$group == "train" & !is.na(data$Exited), ]
-train_df<- subset(train_df, select = -c(ID-, Surname, group))
+train_df<- subset(train_df, select = -c(ID, Surname, group))
 train_df$Exited <- factor(train_df$Exited, levels = c("1","0"))
 
 
