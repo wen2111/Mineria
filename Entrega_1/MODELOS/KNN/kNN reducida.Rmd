@@ -51,15 +51,15 @@ y_testC <- test_df$Exited
 X_trainC <- train_df[, setdiff(names(train_df), "Exited")]
 X_testC <- test_df[, setdiff(names(test_df), "Exited")]
 
-# Convertir variables categóricas en dummies
-dmy <- dummyVars(~ ., data = X_trainC, fullRank = TRUE)
-train_num <- data.frame(predict(dmy, newdata = X_trainC))
-test_num  <- data.frame(predict(dmy, newdata = X_testC))
-
-# estandarizar las variables
-preproc <- preProcess(train_num, method = c("center","scale"))
-trainScaled <- predict(preproc, train_num)
-testScaled  <- predict(preproc, test_num)
+# # Convertir variables categóricas en dummies
+# dmy <- dummyVars(~ ., data = X_trainC, fullRank = TRUE)
+# train_num <- data.frame(predict(dmy, newdata = X_trainC))
+# test_num  <- data.frame(predict(dmy, newdata = X_testC))
+# 
+# # estandarizar las variables
+# preproc <- preProcess(train_num, method = c("center","scale"))
+# trainScaled <- predict(preproc, train_num)
+# testScaled  <- predict(preproc, test_num)
 
 ```
 
@@ -68,7 +68,7 @@ testScaled  <- predict(preproc, test_num)
 set.seed(123)
 ctrl <- trainControl(method = "cv", number = 5, classProbs = TRUE)
 entrenamiento <- train(
-  x = trainScaled,
+  x = X_testC,
   y = y_trainC,
   method = "knn",
   trControl = ctrl,
