@@ -2,7 +2,9 @@
 title: "outliers comparación"
 author: "Laura Belmonte"
 date: "2025-10-17"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
