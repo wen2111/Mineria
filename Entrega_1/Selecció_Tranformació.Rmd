@@ -30,7 +30,7 @@ De manera similar, la variable NumOfProducts mostra que la major part dels clien
 En tots dos casos, la transformació de variables numèriques a categòriques permet reduir la influència de valors poc freqüents, evitar soroll estadístic i facilitar la interpretació dels resultats. A més, aquesta simplificació pot contribuir a millorar l’estabilitat i rendiment dels models predictius, especialment en aquells que treballen millor amb variables discretes o amb distribucions equilibrades.
 
 ```{r}
-load("C:/Users/34688/OneDrive - Universitat de Barcelona/Escritorio/Mineria/DATA/data_imputado.RData")
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 data<-data_imputado
 data$ComplaintsCount_bin <- ifelse(data$ComplaintsCount == 0, 0, 1)
 data$ComplaintsCount_bin <- factor(data$ComplaintsCount_bin,
@@ -60,6 +60,7 @@ varCat<-c("Geography", "Gender", "MaritalStatus", "EducationLevel","HasCrCard",
           "SavingsAccountFlag", "LoanStatus","CustomerSegment","Exited" ,"IsActiveMember","ComplaintsCount_bin", "NumOfProducts_grupo")
 varNum<-c("Age", "CreditScore", "Tenure","EstimatedSalary", "Balance","TransactionFrequency","AvgTransactionAmount","DigitalEngagementScore","NetPromoterScore")
 v<-"Exited"
+
 for (varc1 in varCat) {
   if (varc1 != v) {
     tab <- table(data[[v]], data[[varc1]])  # filas = Exited, columnas = categorías
@@ -95,6 +96,21 @@ for (var in varNum) {
 }
 resultados_mediana
 ```
+
+
+Llavors, les variables significatives son:
+
+```{r}
+resultados_significativos <- data.frame(
+  Variable = c("NumOfProducts_groupo", "Age", "Geography", "Balance", "Gender", "IsActiveMember"),
+  Clase = c("Categórica", "Numérica", "Categórica", "Numérica", "Categórica", "Categórica"),
+  p_valor = c(2.961e-118, 5.036801e-82, 6.1421e-22, 2.264889e-13, 8.746e-14, 7.5648e-18)
+)
+
+print(resultados_significativos)
+```
+
+
 
 Un cop efectuats els tests estadístics pertinents, s’ha constatat un canvi en relació amb els resultats obtinguts abans de la imputació. Les variables CreditScore i EstimateSalary han deixat de ser estadísticament significatives. Aquest resultat no és inesperat, ja que anteriorment presentaven p-valors només lleugerament inferiors a 0,05, fet que ja indicava una significació marginal.
 
