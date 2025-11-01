@@ -10,7 +10,7 @@ library(naniar)
 library(dplyr)
 
 #DATA 
-data<-data_reducida_plus
+data<-data_imputado
 data <- data %>% select(Exited, everything())
 
 
@@ -41,11 +41,12 @@ control <- trainControl(method = "repeatedcv",
                         number = 10, 
                         repeats = 10, 
                         verboseIter = FALSE,
-                        sampling = "rose")
+                        sampling = "up")
 
-hiperparametros <- data.frame(usekernel = TRUE, fL = 0, adjust=0)
+hiperparametros <- data.frame(usekernel = FALSE, fL = 0, adjust=0)
 # tener cuidado con la x, hay que tener en cuenta el rango de datos
-mod <- train(y=train2$Exited, x= train2[,c(2:9)],
+#set.seed(123)
+mod <- train(y=train2$Exited, x= train2[,c(2:20)],
               data = train2, 
               method = "nb", 
               tuneGrid = hiperparametros, 
