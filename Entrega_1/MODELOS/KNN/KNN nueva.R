@@ -95,6 +95,14 @@ run_knn <- function(
   fit_base <- train(x=X_tr, y=y_tr, method="knn",
                     trControl=ctrl5, metric="ROC",
                     tuneGrid=data.frame(k=k_refine))
+  # Accuracy
+  ctrl_acc <- trainControl(method="cv", number=5)
+  fit_coarse_acc <- train(x=X_tr, y=y_tr, method="knn",
+                          trControl=ctrl_acc, metric="Accuracy",
+                          tuneGrid=data.frame(k = k_grid_coarse))
+  with(fit_coarse_acc$results,
+       plot(k, Accuracy, type="b", pch=16, xlab="k (coarse grid)", ylab="Accuracy (CV)"))
+  
   pred_base <- predict(fit_base, newdata=X_te)
   prob_base <- predict(fit_base, newdata=X_te, type="prob")[,"Yes"]
   auc_ext_base <- as.numeric(pROC::auc(pROC::roc(response=y_te, predictor=prob_base,
