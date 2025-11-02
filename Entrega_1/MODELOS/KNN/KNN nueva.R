@@ -4,6 +4,8 @@ library(ROSE)
 library(pROC)
 set.seed(123)
 
+load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/Entrega_1/famd/famd_data.Rdata")
+
 f1_from_cm <- function(cm){
   p <- as.numeric(cm$byClass["Pos Pred Value"])
   r <- as.numeric(cm$byClass["Sensitivity"])
@@ -17,7 +19,7 @@ myROC <- function(data, lev=NULL, model=NULL){
 run_knn <- function(
     data_df, data_name, res_famd, ncp_fixed,
     sampling_vec_fast = c("down","up"),  # under/over-sampling
-    k_grid_coarse = seq(3, 21, 2),
+    k_grid_coarse = seq(1, 9, 1),
     k_refine_span = 2,
     run_smote = FALSE, run_rose = FALSE 
 ){
@@ -154,3 +156,4 @@ summ <- do.call(rbind, by(knn_results, knn_results$DATA, function(df){
 summ
 
 save.image("knn_results.RData")
+
