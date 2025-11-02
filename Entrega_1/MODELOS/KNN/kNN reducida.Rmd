@@ -1,5 +1,5 @@
 ---
-title: "kNN transformada"
+title: "kNN reducida"
 author: "Siling Guo"
 date: "2025-10-14"
 output:

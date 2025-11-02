@@ -1,0 +1,148 @@
+library(caret)
+library(FactoMineR)
+library(ROSE)
+library(pROC)
+set.seed(123)
+
+f1_from_cm <- function(cm){
+  p <- as.numeric(cm$byClass["Pos Pred Value"])
+  r <- as.numeric(cm$byClass["Sensitivity"])
+  2*p*r/(p+r)
+}
+
+myROC <- function(data, lev=NULL, model=NULL){
+  twoClassSummary(data, lev = c("Yes","No"))
+}
+
+run_knn <- function(
+    data_df, data_name, res_famd, ncp_fixed,
+    sampling_vec_fast = c("down","up"),  # under/over-sampling
+    k_grid_coarse = seq(3, 21, 2),
+    k_refine_span = 2,
+    run_smote = FALSE, run_rose = FALSE 
+){
+  ## 1) Train de Kaggle, fijar levels de EXited
+  d <- subset(data_df, group == "train")
+  d$Exited <- factor(ifelse(as.character(d$Exited) == "1", "Yes", "No"),
+                     levels = c("Yes","No"))
+  
+  
+  ## 2) Obtener del objeto FAMD el conjunto de variables activas y los nombres de las filas de entrenamiento.
+  famd_vars      <- colnames(res_famd$call$X)
+  famd_train_ids <- rownames(res_famd$ind$coord)
+  
+  ## 3) Seleccionar las columnas según las variables activas + Exited (asegurando coherencia con las usadas en FAMD).
+  d_f <- d[, c(famd_vars, "Exited"), drop = FALSE]
+  
+  ## 4) Alinear según el orden de filas del entrenamiento FAMD (clave: el orden sigue a famd_train_ids).
+  all_ids    <- rownames(d_f)
+  common_ids <- famd_train_ids[famd_train_ids %in% all_ids]
+  test_ids   <- setdiff(all_ids, common_ids)
+  
+  ## 5) y_tr / y_te
+  y_tr <- d_f[common_ids, "Exited", drop = TRUE]
+  y_te <- d_f[test_ids,  "Exited", drop = TRUE]
+  
+  ## 6) Características del conjunto de prueba：Los niveles de los factores deben basarse en los del conjunto de entrenamiento original.
+  ncp_fixed <- min(ncp_fixed, ncol(res_famd$ind$coord)) 
+  X_tr <- as.data.frame(res_famd$ind$coord[common_ids, 1:ncp_fixed, drop = FALSE])
+  colnames(X_tr) <- paste0("F", seq_len(ncol(X_tr)))
+  
+  ## 7) Realizar una verificación de seguridad (puede mantenerse durante el desarrollo)
+  X_te_raw <- d_f[test_ids, famd_vars, drop = FALSE]
+  X_tr_raw <- d_f[common_ids, famd_vars, drop = FALSE]
+  for (v in famd_vars) {
+    if (is.factor(X_tr_raw[[v]])) {
+      X_te_raw[[v]] <- factor(X_te_raw[[v]], levels = levels(X_tr_raw[[v]]))
+    }
+  }
+  X_te <- as.data.frame(predict(res_famd, newdata = X_te_raw)$coord[, 1:ncp_fixed, drop = FALSE])
+  colnames(X_te) <- paste0("F", seq_len(ncol(X_te)))
+  
+  ## 8) verificación
+  stopifnot(nrow(X_tr) == length(y_tr))
+  stopifnot(nrow(X_te) == length(y_te))
+  
+  make_row <- function(balancea, fit, cm){
+    data.frame(
+      Balancea   = balancea, Método="KNN",
+      Accuracy   = as.numeric(cm$overall["Accuracy"]),
+      Precision  = as.numeric(cm$byClass["Pos Pred Value"]),
+      Recall..S. = as.numeric(cm$byClass["Sensitivity"]),
+      Specifici  = as.numeric(cm$byClass["Specificity"]),
+      F1.score   = f1_from_cm(cm),
+      DATA       = data_name,
+      k_opt      = fit$bestTune$k,
+      AUC_cv     = max(fit$results$ROC, na.rm=TRUE),
+      ncp_used   = ncp_fixed
+    )
+  }
+  
+  out <- list()
+  
+  ## 9) En el conjunto no balanceado, buscar rápidamente k0
+  ctrl5 <- trainControl(method="cv", number=5,
+                        classProbs=TRUE, summaryFunction=myROC)
+  set.seed(123)
+  fit_coarse <- train(x=X_tr, y=y_tr, method="knn",
+                      trControl=ctrl5, metric="ROC",
+                      tuneGrid=data.frame(k=k_grid_coarse))
+  k0 <- fit_coarse$bestTune$k
+  
+  ## 10) Ajustar finamente en el rango k0 ± 2
+  k_refine <- sort(unique(pmax(1, k0 + (-k_refine_span:k_refine_span))))
+  set.seed(123)
+  fit_base <- train(x=X_tr, y=y_tr, method="knn",
+                    trControl=ctrl5, metric="ROC",
+                    tuneGrid=data.frame(k=k_refine))
+  pred_base <- predict(fit_base, newdata=X_te)
+  prob_base <- predict(fit_base, newdata=X_te, type="prob")[,"Yes"]
+  auc_ext_base <- as.numeric(pROC::auc(pROC::roc(response=y_te, predictor=prob_base,
+                                                 levels=c("No","Yes"), direction="<")))
+  cm_base   <- confusionMatrix(pred_base, y_te, positive="Yes")
+  out[[length(out)+1]] <- cbind(make_row("No", fit_base, cm_base),
+                                data.frame(AUC_ext=auc_ext_base, Gap_AUC=fit_base$results$ROC[fit_base$results$k==fit_base$bestTune$k] - auc_ext_base))
+  
+  ## 11) Para cada esquema de balanceo, entrenar una vez con el k_best fijo
+  k_best <- fit_base$bestTune$k
+  
+  one_sampling <- function(samp){
+    set.seed(123)
+    ctrl_s <- trainControl(method="cv", number=5,
+                           classProbs=TRUE, summaryFunction=myROC,
+                           sampling=samp)
+    fit <- train(x=X_tr, y=y_tr, method="knn",
+                 trControl=ctrl_s, metric="ROC",
+                 tuneGrid=data.frame(k=k_best))
+    pred <- predict(fit, X_te)
+    prob <- predict(fit, X_te, type="prob")[,"Yes"]
+    auc_ext <- as.numeric(pROC::auc(pROC::roc(response=y_te, predictor=prob,
+                                              levels=c("No","Yes"), direction="<")))
+    cm  <- confusionMatrix(pred, y_te, positive="Yes")
+    cbind(make_row(paste0("Si:",samp), fit, cm),
+          data.frame(AUC_ext=auc_ext, Gap_AUC=fit$results$ROC[fit$results$k==fit$bestTune$k] - auc_ext))
+  }
+  for (samp in sampling_vec_fast) out[[length(out)+1]] <- one_sampling(samp)
+  if (run_smote) out[[length(out)+1]] <- one_sampling("smote")
+  if (run_rose)  out[[length(out)+1]] <- one_sampling("rose")
+  
+  do.call(rbind, out)
+}
+
+
+ncp_map <- list(Imputado=19, reducido=8, reducido_plus=10, transformada=28)
+
+res_knn_imputado      <- run_knn(data_imputado,      "Imputado",      res.famd_imp, ncp_map$Imputado)
+res_knn_reducida      <- run_knn(data_reducida,      "reducido",      res.famd_red, ncp_map$reducido)
+res_knn_reducida_plus <- run_knn(data_reducida_plus, "reducido_plus", res.famd_p,   ncp_map$reducido_plus)
+res_knn_transformada  <- run_knn(data_transformada,  "transformada",  res.famd_t,   ncp_map$transformada)
+
+knn_results <- rbind(res_knn_imputado, res_knn_reducida, res_knn_reducida_plus, res_knn_transformada)
+knn_results[order(knn_results$DATA, knn_results$Balancea), ]
+
+summ <- do.call(rbind, by(knn_results, knn_results$DATA, function(df){
+  df[order(-df$AUC_ext, -df$F1.score), ][1, c("DATA","Balancea","k_opt","AUC_cv","AUC_ext","Gap_AUC","F1.score","Recall..S.","Specifici","ncp_used")]
+}))
+summ
+
+save.image("knn_results.RData")

@@ -122,6 +122,7 @@ famd_features_p <- res.famd_p$ind$coord
 fviz_screeplot(res.famd_p, addlabels = TRUE, ylim = c(0, 15)) +
   ggtitle("Varianza explicada por dimensión (FAMD)")
 ```
+Para los datos transformada antes de aplicar el knn, se observa que se necesita un total de 10 dimensiones para explicar aproximar el 85% explicado de la variabilidad.
 
 # transformada
 ```{r}
