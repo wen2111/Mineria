@@ -19,7 +19,7 @@ myROC <- function(data, lev=NULL, model=NULL){
 run_knn <- function(
     data_df, data_name, res_famd, ncp_fixed,
     sampling_vec_fast = c("down","up"),  # under/over-sampling
-    k_grid_coarse = seq(1, 9, 1),
+    k_grid_coarse = seq(1, 7, 2),
     k_refine_span = 2,
     run_smote = FALSE, run_rose = FALSE 
 ){
