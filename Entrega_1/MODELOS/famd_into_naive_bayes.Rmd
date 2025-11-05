@@ -52,8 +52,7 @@ test_reducida2  <- train_reducida[-index, ] # test interno
 
 ## FAMD
 ```{r}
-train_famd <- FAMD(train_reducida2[, !names(train_reducida2) %in% "Exited"], 
-                   ncp = 9,  # se puede cambiar el nº de comp a mantener
+train_famd <- FAMD(train_reducida2[, !names(train_reducida2) %in% "Exited"],
                    graph = FALSE)
 fviz_screeplot(train_famd, addlabels = TRUE, ylim = c(0, 20)) +
   ggtitle("Varianza explicada por dimensión (FAMD)")
@@ -61,8 +60,7 @@ fviz_screeplot(train_famd, addlabels = TRUE, ylim = c(0, 20)) +
 train_famd_coord <- as.data.frame(train_famd$ind$coord)
 train_famd_coord$Exited <- train_reducida2$Exited
 
-test_famd <- FAMD(test_reducida2[, !names(test_reducida2) %in% "Exited"], 
-                   ncp = 9,  # se puede cambiar el nº de comp a mantener
+test_famd <- FAMD(test_reducida2[, !names(test_reducida2) %in% "Exited"],
                    graph = FALSE)
 test_famd_coord <- as.data.frame(test_famd$ind$coord)
 test_famd_coord$Exited <- test_reducida2$Exited
