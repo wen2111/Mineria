@@ -6,13 +6,14 @@ library("ggplot2")
 library(e1071)
 library(klaR)
 library(dplyr)
-
+library(FactoMineR)
+library(factoextra)
 load("dataaaaaaaaaaaaaa.RData")
 load("data_imputado.RData") # SUBMISSION ID
 
 #DATA 
 data<-data_reducida
-data <- data %>% select(Exited, everything())
+data <- data %>% select(Exited, everything()) # poner exited en la primera columna
 data$ID <- data_imputado$ID # necesaria en test kaggle para hacer el submission, luego se quita de train
 
 
@@ -30,22 +31,19 @@ train$Exited <- factor(train$Exited,
 
 # FAMD
 
-train_famd <- FAMD(train[, !names(train) %in% "Exited"],ncp = 20,
+train_famd <- FAMD(train[, !names(train) %in% "Exited"],ncp = 25,
                    graph = FALSE)
-fviz_screeplot(train_famd, addlabels = TRUE, ylim = c(0, 20)) +
-  ggtitle("Varianza explicada por dimensión (FAMD)")
-
 train_famd_coord <- as.data.frame(train_famd$ind$coord)
 train_famd_coord$Exited <- train$Exited
 
-
-test_famd <- FAMD(test[, !names(test) %in% "Exited"],ncp=20,
+test_famd <- FAMD(test[, !names(test) %in% "Exited"],ncp=25,
                   graph = FALSE)
 test_famd_coord <- as.data.frame(test_famd$ind$coord)
 test_famd_coord$Exited <- test$Exited
-fviz_screeplot(test_famd, addlabels = TRUE, ylim = c(0, 20)) +
-  ggtitle("Varianza explicada por dimensión (FAMD)")
 
+train<-train_famd_coord
+test<-test_famd_coord
+# get_eigenvalue(train_famd)
 # TRAIN I TEST NUESTRO
 
 set.seed(123)
@@ -63,9 +61,9 @@ control <- trainControl(method = "repeatedcv",
                         sampling = "up")
 
 hiperparametros <- data.frame(usekernel = FALSE, fL = 0, adjust=0)
-# tener cuidado con la x, hay que tener en cuenta el rango de datos
+# tener cuidado con la x, hay que tener en cuenta el rango de datos de train2
 #set.seed(123)
-mod <- train(y=train2$Exited, x= train2[,c(2:7)],
+mod <- train(y=train2$Exited, x= train2[,c(1:8)],
               data = train2, 
               method = "nb", 
               tuneGrid = hiperparametros, 
