@@ -4,7 +4,7 @@ library(ROSE)
 library(pROC)
 set.seed(123)
 
-load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/Entrega_1/famd/famd_data.Rdata")
+# load("C:/Users/95409/OneDrive/ESTADISTICA/4r/1/MD/Mineria/Entrega_1/famd/famd_data.Rdata")
 
 f1_from_cm <- function(cm){
   p <- as.numeric(cm$byClass["Pos Pred Value"])
@@ -147,7 +147,7 @@ res_knn_reducida      <- run_knn(data_reducida,      "reducido",      res.famd_r
 res_knn_reducida_plus <- run_knn(data_reducida_plus, "reducido_plus", res.famd_p,   ncp_map$reducido_plus)
 res_knn_transformada  <- run_knn(data_transformada,  "transformada",  res.famd_t,   ncp_map$transformada)
 
-# === 写出“submission-like” CSV（用内部 test, group=="test"）===
+# submission CSV（interno test, group=="test"）
 write_internal_submission <- function(
     data_df, data_name,
     res_famd, ncp_fixed,
