@@ -1,0 +1,5 @@
+"Prediction","Reference","Freq"
+"Yes","Yes",62
+"No","Yes",381
+"Yes","No",64
+"No","No",1593
