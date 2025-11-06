@@ -147,76 +147,6 @@ res_knn_reducida      <- run_knn(data_reducida,      "reducido",      res.famd_r
 res_knn_reducida_plus <- run_knn(data_reducida_plus, "reducido_plus", res.famd_p,   ncp_map$reducido_plus)
 res_knn_transformada  <- run_knn(data_transformada,  "transformada",  res.famd_t,   ncp_map$transformada)
 
-# === 写出“submission-like” CSV（用内部 test, group=="test"）===
-write_internal_submission <- function(
-    data_df, data_name,
-    res_famd, ncp_fixed,
-    k_best,
-    sampling = NULL, 
-    id_col   = NULL,
-    out_dir  = "submissions",
-    label_output = FALSE    # TRUE 输出 id,y_pred；默认 FALSE 输出 id,prob_yes
-){
-  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-  
-  # 1) train/test internal
-  d_tr <- subset(data_df, group == "train")
-  d_te <- subset(data_df, group == "test")
-  d_tr$Exited <- factor(ifelse(as.character(d_tr$Exited)=="1","Yes","No"),
-                        levels=c("Yes","No"))
-  
-  # 2) famd vars + ncp
-  famd_vars  <- colnames(res_famd$call$X)
-  ncp_fixed  <- min(ncp_fixed, ncol(res_famd$ind$coord))
-  
-  # 3) coord famd
-  if (is.null(rownames(d_tr))) rownames(d_tr) <- make.unique(sprintf("r%05d", 1:nrow(d_tr)))
-  famd_train_ids <- rownames(res_famd$ind$coord)
-  keep_ids <- famd_train_ids[famd_train_ids %in% rownames(d_tr)]
-  X_tr <- as.data.frame(res_famd$ind$coord[keep_ids, 1:ncp_fixed, drop=FALSE])
-  colnames(X_tr) <- paste0("F", seq_len(ncol(X_tr)))
-  y_tr <- d_tr[keep_ids, "Exited", drop=TRUE]
-  
-  # 4) factor levels + proyección famd
-  X_te_raw <- d_te[, famd_vars, drop=FALSE]
-  ref_raw  <- d_tr[keep_ids, famd_vars, drop=FALSE]
-  for (v in famd_vars) if (is.factor(ref_raw[[v]])) {
-    X_te_raw[[v]] <- factor(X_te_raw[[v]], levels = levels(ref_raw[[v]]))
-  }
-  X_te <- as.data.frame(predict(res_famd, newdata = X_te_raw)$coord[, 1:ncp_fixed, drop=FALSE])
-  colnames(X_te) <- paste0("F", seq_len(ncol(X_te)))
-  
-  # 5) k 
-  ctrl <- caret::trainControl(method="cv", number=5,
-                              classProbs=TRUE, summaryFunction=twoClassSummary)
-  if (!is.null(sampling)) ctrl$sampling <- sampling
-  set.seed(123)
-  fit <- caret::train(x=X_tr, y=y_tr, method="knn",
-                      trControl=ctrl, metric="ROC",
-                      tuneGrid=data.frame(k=k_best))
-  
-  # 6) pred, csv
-  ids <- if (!is.null(id_col) && id_col %in% names(d_te)) d_te[[id_col]] else {
-    if (!is.null(rownames(d_te))) rownames(d_te) else seq_len(nrow(d_te))
-  }
-  bal_tag <- ifelse(is.null(sampling), "NoBal", paste0("Si-", sampling))
-  
-  if (label_output) {
-    y_pred <- predict(fit, X_te)
-    submit <- data.frame(id = ids, y_pred = y_pred, stringsAsFactors = FALSE)
-    fn <- file.path(out_dir, sprintf("submit_%s__%s__k%d__ncp%d_labels.csv",
-                                     data_name, bal_tag, k_best, ncp_fixed))
-  } else {
-    prob <- predict(fit, X_te, type="prob")[,"Yes"]
-    submit <- data.frame(id = ids, prob_yes = prob, stringsAsFactors = FALSE)
-    fn <- file.path(out_dir, sprintf("submit_%s__%s__k%d__ncp%d.csv",
-                                     data_name, bal_tag, k_best, ncp_fixed))
-  }
-  write.csv(submit, fn, row.names = FALSE)
-  message("DONE", fn)
-  invisible(fn)
-}
-
 knn_results <- rbind(res_knn_imputado, res_knn_reducida, res_knn_reducida_plus, res_knn_transformada)
 knn_results[order(knn_results$DATA, knn_results$Balancea), ]
 
@@ -225,38 +155,6 @@ summ <- do.call(rbind, by(knn_results, knn_results$DATA, function(df){
 }))
 summ
 
-# 
-get_bundle <- function(data_name){
-  switch(data_name,
-         "Imputado"      = list(df = data_imputado,      famd = res.famd_imp, ncp = ncp_map$Imputado),
-         "reducido"      = list(df = data_reducida,      famd = res.famd_red, ncp = ncp_map$reducido),
-         "reducido_plus" = list(df = data_reducida_plus, famd = res.famd_p,   ncp = ncp_map$reducido_plus),
-         "transformada"  = list(df = data_transformada,  famd = res.famd_t,   ncp = ncp_map$transformada),
-         stop("DATA desconocido: ", data_name)
-  )
-}
-
-# el millor model --> csv
-datas <- unique(knn_results$DATA)
-for (dn in datas){
-  best <- subset(knn_results, DATA==dn)
-  best <- best[order(-best$AUC_ext, -best$F1.score), ][1, ]
-  k_best   <- as.integer(best$k_opt)
-  sampling <- as.character(best$Balancea)
-  sampling <- if (sampling=="No") NULL else sub("^Si:", "", sampling)
-  
-  b <- get_bundle(dn)
-  write_internal_submission(
-    data_df   = b$df,
-    data_name = dn,
-    res_famd  = b$famd,
-    ncp_fixed = b$ncp,
-    k_best    = k_best,
-    sampling  = sampling,
-    id_col    = NULL, 
-    out_dir   = "submissions",
-    label_output = FALSE       # TRUE --> y_pred
-  )
-}
-
 save.image("knn_results.RData")
+
+
