@@ -42,4 +42,3 @@ ggplot(data_imputada_balanceada, aes(x = Exited)) +
 save(data_imputada_balanceada, file = "imputada_balanceada.RData")
 
 
-################################ FIN ###########################################
