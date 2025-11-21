@@ -1,0 +1,248 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-11-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+En este script se realiza un modelo de clasificación binario con caret (cv=10) Y CON loocv.
+
+Se utiliza la base de datos desbalanceada y se juega con el cutoff para hacer frente al desbalanceo.
+
+# Caret
+
+Trabajaremos a partir de datatrain, donde tenemos la respuesta Exited para todas las filas
+```{r}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+datatrain <- data_reducida_plus[1:7000, !(names(data_reducida_plus) %in% "group")]
+datatest<-data_reducida_plus[7001:10000,!(names(data_reducida_plus) %in% "group")]
+```
+
+Con Caret se genera el modelo glm de respuesta binaria
+```{r}
+library(caret)
+
+set.seed(123)
+
+datatrain$Exited <- factor(datatrain$Exited, levels=c(0,1), labels=c("neg","pos"))
+
+# Control de cross-validation
+train_ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = TRUE
+)
+
+# Entrenem el model logístic amb CV
+fit_cv <- train(
+  Exited ~ .,
+  data = datatrain,
+  method = "glm",
+  family = binomial,
+  trControl = train_ctrl,
+  metric = "ROC"
+)
+
+# Obtenim les probabilitats out-of-fold
+prob_cv <- fit_cv$pred$pos
+y_cv    <- fit_cv$pred$obs
+```
+
+Ara evaluem mitjançant els kpi explicats a classe els resultats del model. Es proporciona una funció que permet obtenir les mètriques modificant el llindar o cutoff
+```{r}
+performance_metrics <- function(y_true, prob, cutoff=0.5, dec=3){
+  
+  # Convertim y_true a neg/pos
+  y_true <- factor(y_true, levels=c(0,1), labels=c("neg","pos"))
+  
+  # Predicció com a factor amb nivells fixos
+  pred <- factor(ifelse(prob > cutoff, "pos", "neg"),
+                 levels=c("neg","pos"))
+  
+  # Calculem la taula manualment garantint files/columnes
+  cm <- matrix(0, nrow=2, ncol=2,
+               dimnames=list(Predicted=c("neg","pos"),
+                             Actual=c("neg","pos")))
+  
+  tab <- table(Predicted=pred, Actual=y_true)
+  
+  cm[rownames(tab), colnames(tab)] <- tab
+  
+  TN <- cm["neg","neg"]
+  FP <- cm["pos","neg"]
+  FN <- cm["neg","pos"]
+  TP <- cm["pos","pos"]
+  
+  Sens <- TP/(TP+FN)
+  Spec <- TN/(TN+FP)
+  PPV  <- TP/(TP+FP)
+  NPV  <- TN/(TN+FN)
+  PLR  <- PPV/(1-NPV)
+  NLR  <- NPV/(1-PPV)
+  Acc  <- (TP+TN) / sum(cm)
+  
+  list(
+    Sensitivity = round(Sens, dec),
+    Specificity = round(Spec, dec),
+    PPV = round(PPV, dec),
+    NPV = round(NPV, dec),
+    PLR = round(PLR, dec),
+    NLR = round(NLR, dec),
+    Accuracy = round(Acc, dec),
+    ConfusionMatrix = cm
+  )
+}
+#Per tenir les probabilitats en l'ordre de la variable sortida:
+prob_alineada <- numeric(nrow(datatrain))
+
+prob_alineada[fit_cv$pred$rowIndex] <- fit_cv$pred$pos
+
+#tornem a transformar a numèrica la variable sortida
+y_numeric <- ifelse(datatrain$Exited == "pos", 1, 0)
+```
+
+Evaluem els KPI per a diferents cutoff per observar les variacions que es donen
+```{r}
+cutpoints <- seq(0.1, 0.9, by=0.05)
+results   <- data.frame()
+
+results <- data.frame(
+  Cutpoint    = numeric(),
+  Sensitivity = numeric(),
+  Specificity = numeric(),
+  PPV         = numeric(),
+  NPV         = numeric(),
+  PLR         = numeric(),
+  NLR         = numeric(),
+  Accuracy    = numeric(),
+  F1          = numeric()
+)
+
+
+f1_score_cm <- function(cm){
+  TP <- cm["pos","pos"]
+  FP <- cm["pos","neg"]
+  FN <- cm["neg","pos"]
+  
+  precision <- TP / (TP + FP)
+  recall    <- TP / (TP + FN)
+  
+  f1 <- 2 * (precision * recall) / (precision + recall)
+  return(round(f1, 3))
+}
+
+
+for(c in cutpoints){
+  m <- performance_metrics(y_numeric, prob_alineada, cutoff=c)
+  
+  results <- rbind(results, data.frame(
+    Cutpoint    = c, 
+    Sensitivity = m$Sensitivity,
+    Specificity = m$Specificity,
+    PPV         = m$PPV,
+    NPV         = m$NPV, 
+    PLR         = m$PLR, 
+    NLR         = m$NLR,
+    Accuracy    = m$Accuracy,
+    F1          = f1_score_cm(m$ConfusionMatrix)
+  ))
+}
+
+results
+results
+```
+
+
+#LOOCV (leave One Out Cross Validation)
+
+```{r}
+library(caret)
+
+set.seed(123)
+datatrain <- data_reducida_plus[1:7000, !(names(data_reducida_plus) %in% "group")]
+datatest<-data_reducida_plus[7001:10000,!(names(data_reducida_plus) %in% "group")]
+# 1️⃣ Convertimos Exited a factor neg/pos
+datatrain$Exited <- factor(datatrain$Exited, levels=c(0,1), labels=c("neg","pos"))
+
+# 2️⃣ Control LOOCV
+ctrl_loocv <- trainControl(
+  method = "LOOCV",
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = TRUE   # importante para obtener predicciones out-of-fold
+)
+
+# 3️⃣ Entrenamos modelo logístico con LOOCV
+fit_loocv <- train(
+  Exited ~ .,
+  data = datatrain,
+  method = "glm",
+  family = "binomial",
+  trControl = ctrl_loocv,
+  metric = "ROC"
+)
+
+# 4️⃣ Probabilidades out-of-fold en el orden original
+prob_loocv <- numeric(nrow(datatrain))
+prob_loocv[fit_loocv$pred$rowIndex] <- fit_loocv$pred$pos
+
+# 5️⃣ Convertimos Exited a 0/1 para métricas
+y_numeric <- ifelse(datatrain$Exited == "pos", 1, 0)
+
+cutpoints <- seq(0.1, 0.9, by=0.05)
+results   <- data.frame()
+
+results <- data.frame(
+  Cutpoint    = numeric(),
+  Sensitivity = numeric(),
+  Specificity = numeric(),
+  PPV         = numeric(),
+  NPV         = numeric(),
+  PLR         = numeric(),
+  NLR         = numeric(),
+  Accuracy    = numeric(),
+  F1          = numeric()
+)
+
+
+f1_score_cm <- function(cm){
+  TP <- cm["pos","pos"]
+  FP <- cm["pos","neg"]
+  FN <- cm["neg","pos"]
+  
+  precision <- TP / (TP + FP)
+  recall    <- TP / (TP + FN)
+  
+  f1 <- 2 * (precision * recall) / (precision + recall)
+  return(round(f1, 3))
+}
+
+
+for(c in cutpoints){
+  m <- performance_metrics(y_numeric, prob_alineada, cutoff=c)
+  
+  results <- rbind(results, data.frame(
+    Cutpoint    = c, 
+    Sensitivity = m$Sensitivity,
+    Specificity = m$Specificity,
+    PPV         = m$PPV,
+    NPV         = m$NPV, 
+    PLR         = m$PLR, 
+    NLR         = m$NLR,
+    Accuracy    = m$Accuracy,
+    F1          = f1_score_cm(m$ConfusionMatrix)
+  ))
+}
+
+results
+results
+
+```
+
+# Bootsrap
+
