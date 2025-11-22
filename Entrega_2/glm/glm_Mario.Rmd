@@ -1,6 +1,8 @@
 ---
 title: "Untitled"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 date: "2025-11-21"
 ---
 
@@ -166,10 +168,10 @@ library(caret)
 set.seed(123)
 datatrain <- data_reducida_plus[1:7000, !(names(data_reducida_plus) %in% "group")]
 datatest<-data_reducida_plus[7001:10000,!(names(data_reducida_plus) %in% "group")]
-# 1️⃣ Convertimos Exited a factor neg/pos
+#  Convertimos Exited a factor neg/pos
 datatrain$Exited <- factor(datatrain$Exited, levels=c(0,1), labels=c("neg","pos"))
 
-# 2️⃣ Control LOOCV
+#  Control LOOCV
 ctrl_loocv <- trainControl(
   method = "LOOCV",
   classProbs = TRUE,
@@ -177,7 +179,7 @@ ctrl_loocv <- trainControl(
   savePredictions = TRUE   # importante para obtener predicciones out-of-fold
 )
 
-# 3️⃣ Entrenamos modelo logístico con LOOCV
+# Entrenamos modelo logístico con LOOCV
 fit_loocv <- train(
   Exited ~ .,
   data = datatrain,
@@ -187,11 +189,11 @@ fit_loocv <- train(
   metric = "ROC"
 )
 
-# 4️⃣ Probabilidades out-of-fold en el orden original
+#  Probabilidades out-of-fold en el orden original
 prob_loocv <- numeric(nrow(datatrain))
 prob_loocv[fit_loocv$pred$rowIndex] <- fit_loocv$pred$pos
 
-# 5️⃣ Convertimos Exited a 0/1 para métricas
+#  Convertimos Exited a 0/1 para métricas
 y_numeric <- ifelse(datatrain$Exited == "pos", 1, 0)
 
 cutpoints <- seq(0.1, 0.9, by=0.05)
