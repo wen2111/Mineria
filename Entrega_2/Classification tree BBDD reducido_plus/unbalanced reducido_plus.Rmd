@@ -1,21 +1,36 @@
 ---
-title: "CART reducido_plus"
+title: "Classification Tree bbdd reducido_plus"
+author: "Grupo 5"
 output:
-  pdf_document: default
-  html_document: default
-date: "2025-11-20"
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+geometry: "left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm"
+header-includes:
+  - \usepackage{tocloft}
+  - \renewcommand{\contentsname}{\hfill\LARGE\textbf{ÍNDICE}\hfill}
+  - \renewcommand{\cftaftertoctitle}{\hfill}
+  - \addtocontents{toc}{\protect\thispagestyle{empty}}
+  - \addtocontents{toc}{\protect\setcounter{tocdepth}{3}}
+  - \renewcommand{\cftsecafterpnum}{\vspace{8pt}}
+  - \renewcommand{\cftsubsecafterpnum}{\vspace{5pt}}
+  - \renewcommand{\cftsubsubsecafterpnum}{\vspace{3pt}}
+  - \renewcommand{\cftdotsep}{1.5}
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-```{r}
+```{r, include=FALSE}
 load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 library(rpart)
 library(caret)
 library(rpart.plot)
+library(ROSE)
 ```
 
+# Base de datos reducido_plus SIN BALANCEAR
 ```{r}
 data4tree<-data_reducida_plus[0:7000,]
 datatest<-data_reducida_plus[7001:10000,]
@@ -24,7 +39,7 @@ train <- data4tree[ind,]
 test <- data4tree[-ind,]
 ```
 
-# Método cp=0
+## Método cp=0
 
 ```{r}
 tree <- rpart(Exited ~ ., data = train, cp = 0)
@@ -32,7 +47,7 @@ printcp(tree)
 plotcp(tree)
 ```
 
-## Elección cp óptimo
+### Elección cp óptimo
 
 ```{r}
 xerror <- tree$cptable[,"xerror"]
@@ -43,7 +58,8 @@ tree$cptable[imin.xerror, ]
 upper.xerror <- xerror[imin.xerror] + tree$cptable[imin.xerror, "xstd"]
 upper.xerror
 ```
-### Cp mínimo
+
+#### Cp mínimo
 
 ```{r}
 tree2 <- prune(tree, cp = 0.002967359)
@@ -52,32 +68,32 @@ importance <- round(100*importance/sum(importance), 1)
 importance
 ```
 Matriz de confusión para train
-```{r}
+```{r, echo=FALSE}
 p <- predict(tree2, train, type = 'class')
 (conf_train<-confusionMatrix(p, train$Exited, positive="1"))
 ```
 Matriz de confusión para test
-```{r}
+```{r, echo=FALSE}
 p2 <- predict(tree2, test, type = 'class')
 (conf_test<-confusionMatrix(p2, test$Exited, positive="1"))
 ```
 
 F1 score
-```{r}
+```{r, echo=FALSE}
  f1_score <- function(cm){
  precision <- cm$byClass["Precision"]
  recall <- cm$byClass["Sensitivity"]
  f1 <- 2 * (precision * recall) / (precision + recall)
  return(as.numeric(f1))
  }
- print(f1_train <- f1_score(conf_train))
- print(f1_test <- f1_score(conf_test))
+ cat("f1 datos train", f1_train <- f1_score(conf_train))
+ cat("f1 datos test", f1_score(conf_test))
 ```
 Los resultados no son satisfactorios:
 - Valores pobres para F1score y recall
 - Indicios de overfitting (0.4702809>>0.3987915)
 
-### Cp mínimo+ error estándar
+#### Cp mínimo+ error estándar
 
 ```{r}
 icp <- which(tree$cptable[, "xerror"] <= upper.xerror)[1]
@@ -89,59 +105,118 @@ importance
 ```
 Vemos como han cambiado los valores de importancia. Ahora se comprovará si mejoran los KPI.
 Matriz de confusión para train
-```{r}
+```{r, echo=FALSE}
 p <- predict(tree3, train, type = 'class')
 conf_train<-confusionMatrix(p, train$Exited, positive="1")
 ```
 Matriz de confusión para test
-```{r}
+```{r, echo=FALSE}
 p2 <- predict(tree3, test, type = 'class')
 conf_test<-confusionMatrix(p2, test$Exited, positive="1")
 ```
 
 F1 score
-```{r}
- print(f1_train <- f1_score(conf_train))
- print(f1_test <- f1_score(conf_test))
+```{r, echo=FALSE}
+ cat("f1 datos train", f1_train <- f1_score(conf_train))
+ cat("f1 datos test", f1_score(conf_test))
 ```
 No hay overfitting, pero el f1 score es notablemente peor.
 
-# Método Caret
+## Método Caret
 
 ```{r}
-caret.rpart <- train(Exited ~ ., method = "rpart", data = train, 
-                     tuneLength = 20,
-                     trControl = trainControl(method = "cv", number = 10)) 
+caret.rpart <- train(Exited ~ ., method = "rpart", data = train,
+ tuneLength = 20,
+ trControl = trainControl(method = "cv", number = 10))
 ggplot(caret.rpart)
 rpart.plot(caret.rpart$finalModel)
 ```
 Importancia de las variables:
-```{r}
+```{r, echo=FALSE}
 var.imp <- varImp(caret.rpart)
 plot(var.imp)
 ```
 Las predicciones:
 
 Matriz de confusión datos train
-```{r}
+```{r, echo=FALSE}
 pred1 <- predict(caret.rpart, newdata = train)
 (conf_test<-confusionMatrix(pred1, train$Exited, positive="1"))
 ```
 Matriz de confusión datos test:
-```{r}
+```{r, echo=FALSE}
 pred <- predict(caret.rpart, newdata = test)
 (conf_train<-confusionMatrix(pred, test$Exited, positive="1"))
 ```
 
 Los F1score:
-```{r}
- print(f1_train <- f1_score(conf_train))
- print(f1_test <- f1_score(conf_test))
+```{r, echo=FALSE}
+ cat("f1 datos train", f1_train <- f1_score(conf_train))
+ cat("f1 datos test", f1_score(conf_test))
 ```
 - Valores muy pobres de F1 y recall
 - Indicios de overfitting
 
-# Conclusiones para data_reducido_plus sin balancear
+## Conclusiones para data_reducido_plus sin balancear
 
 Resultados bastante mejorables tanto con el paquete Caret como encontrando el Cp óptimo a partir del árbol más grande (Cp=0). Sumar la desviación típica tampoco mejora los resultados. Probaremos balanceando los datos.
 
+
+# Base de datos reducido_plus BALANCEO 
+
+A continuación se buscará para diferentes niveles de balanceo dónde se obtienen mejores kpi con caret
+
+```{r, echo=FALSE}
+library(ROSE)
+library(caret)
+library(dplyr)
+set.seed(1271)
+# Función F1-Score
+f1_score <- function(conf_matrix) {
+  precision <- conf_matrix$byClass["Pos Pred Value"]
+  recall <- conf_matrix$byClass["Sensitivity"]
+  2 * (precision * recall) / (precision + recall)
+}
+seeds <- vector(mode = "list", length = 6) 
+for(i in 1:5) seeds[[i]] <- sample.int(1000, 10) 
+seeds[[6]] <- sample.int(1000, 1)
+
+resultados <- data.frame()
+
+for(p in seq(0.05, 0.50, by = 0.05)) {
+  set.seed(123)
+  
+  data_balanced <- ROSE(Exited ~ ., data = train, p = p, seed = 123)$data
+  
+  model <- train(Exited ~ ., method = "rpart", data = data_balanced,
+                 tuneLength = 10, trControl = trainControl(method = "cv", number = 5,seeds = seeds))
+  
+  pred_train <- predict(model, train)
+  pred_test <- predict(model, test)
+  
+  cm_train <- confusionMatrix(pred_train, train$Exited, positive = "1")
+  cm_test <- confusionMatrix(pred_test, test$Exited, positive = "1")
+  
+  nueva_fila <- data.frame(
+    F1_Train = f1_score(cm_train),
+    F1_Test = f1_score(cm_test),
+    Sensitivity_Train = cm_train$byClass["Sensitivity"],
+    Sensitivity_Test = cm_test$byClass["Sensitivity"],
+    Specificity_Train = cm_train$byClass["Specificity"],
+    Specificity_Test = cm_test$byClass["Specificity"],
+    Accuracy_Train = cm_train$overall["Accuracy"],
+    Accuracy_Test = cm_test$overall["Accuracy"]
+  )
+  
+  rownames(nueva_fila) <- paste0("p_", p)
+  resultados <- rbind(resultados, nueva_fila)
+}
+
+print(resultados)
+```
+
+## Conclusiones balanceo
+
+- Se obtienen mejores resultados que sin balancear
+- con balanceo 50-50 se obtiene el mejor recall. Se logra detectar 6 de cada 10 clientes que abandonan el banco.
+- En términos de F-score, los mejores resultados se obtienen con balanceo 0.45.
