@@ -16,232 +16,203 @@ Se utiliza la base de datos desbalanceada y se juega con el cutoff para hacer fr
 
 # Caret
 
-Trabajaremos a partir de datatrain, donde tenemos la respuesta Exited para todas las filas
-```{r}
-# load("~/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
-data_reducida_balanceada$Exited <- factor(data_reducida_balanceada$Exited, levels=c("No","Yes"), labels=c("neg","pos"))
-#datatrain <- data_reducida_balanceada[1:7000, !(names(data_reducida_balanceada) %in% "group")]
-#datatest<-data_reducida_balanceada[7001:10000,!(names(data_reducida_balanceada) %in% "group")]
+Preparación de los datos
+```{r, echo=FALSE}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+datatrain <- data_reducida_plus[1:7000, !(names(data_reducida_plus) %in% "group")]
+datatest<-data_reducida_plus[7001:10000,!(names(data_reducida_plus) %in% "group")]
+datatrain$Exited <- factor(datatrain$Exited, levels=c(0,1), labels=c("neg","pos"))
+datatrain$NumOfProducts_grupo <- as.character(datatrain$NumOfProducts_grupo) 
+datatrain$NumOfProducts_grupo[datatrain$NumOfProducts_grupo == "3 o más"] <- "3_plus" 
+datatrain$NumOfProducts_grupo <- factor(datatrain$NumOfProducts_grupo)      
 ```
 
-Con Caret se genera el modelo glm de respuesta binaria
-```{r}
+Trabajaremos a partir de datatrain, donde tenemos la respuesta Exited para todas las filas
+
+La idea es probar varios niveles de balanceo y de cutoff para encontrar el óptimo para ambos parámetros.
+```{r, echo=FALSE}
 library(caret)
+library(ROSE)
+library(pROC)
 
 set.seed(123)
 
-# datatrain$Exited <- factor(datatrain$Exited, levels=c(0,1), labels=c("neg","pos"))
-
-# Control de cross-validation
-train_ctrl <- trainControl(
-  method = "cv",
-  number = 10,
-  classProbs = TRUE,
-  summaryFunction = twoClassSummary,
-  savePredictions = TRUE
-)
-
-# Entrenem el model logístic amb CV
-fit_cv <- train(
-  Exited ~ .,
-  data = datatrain,
-  method = "glm",
-  family = binomial,
-  trControl = train_ctrl,
-  metric = "ROC"
-)
-
-# Obtenim les probabilitats out-of-fold
-prob_cv <- fit_cv$pred$pos
-y_cv    <- fit_cv$pred$obs
-```
-
-Ara evaluem mitjançant els kpi explicats a classe els resultats del model. Es proporciona una funció que permet obtenir les mètriques modificant el llindar o cutoff
-```{r}
-performance_metrics <- function(y_true, prob, cutoff=0.5, dec=3){
+rose_ratios <- seq(0.25, 0.50, by = 0.05)
+compute_kpis <- function(obs, pred_class, prob_pos) {
   
-  # Convertim y_true a neg/pos
-  y_true <- factor(y_true, levels=c(0,1), labels=c("neg","pos"))
+  cm <- confusionMatrix(pred_class, obs, positive = "pos")
   
-  # Predicció com a factor amb nivells fixos
-  pred <- factor(ifelse(prob > cutoff, "pos", "neg"),
-                 levels=c("neg","pos"))
+  auc <- roc(obs, prob_pos)$auc
   
-  # Calculem la taula manualment garantint files/columnes
-  cm <- matrix(0, nrow=2, ncol=2,
-               dimnames=list(Predicted=c("neg","pos"),
-                             Actual=c("neg","pos")))
-  
-  tab <- table(Predicted=pred, Actual=y_true)
-  
-  cm[rownames(tab), colnames(tab)] <- tab
-  
-  TN <- cm["neg","neg"]
-  FP <- cm["pos","neg"]
-  FN <- cm["neg","pos"]
-  TP <- cm["pos","pos"]
-  
-  Sens <- TP/(TP+FN)
-  Spec <- TN/(TN+FP)
-  PPV  <- TP/(TP+FP)
-  NPV  <- TN/(TN+FN)
-  PLR  <- PPV/(1-NPV)
-  NLR  <- NPV/(1-PPV)
-  Acc  <- (TP+TN) / sum(cm)
-  
-  list(
-    Sensitivity = round(Sens, dec),
-    Specificity = round(Spec, dec),
-    PPV = round(PPV, dec),
-    NPV = round(NPV, dec),
-    PLR = round(PLR, dec),
-    NLR = round(NLR, dec),
-    Accuracy = round(Acc, dec),
-    ConfusionMatrix = cm
+  data.frame(
+    Sensitivity = cm$byClass["Sensitivity"],
+    Specificity = cm$byClass["Specificity"],
+    PPV         = cm$byClass["Pos Pred Value"],
+    NPV         = cm$byClass["Neg Pred Value"],
+    Accuracy    = cm$overall["Accuracy"],
+    F1          = cm$byClass["F1"],
+    AUC         = auc
   )
 }
-#Per tenir les probabilitats en l'ordre de la variable sortida:
-prob_alineada <- numeric(nrow(datatrain))
+results_all <- data.frame()
+cutpoints <- seq(0.1, 0.9, by = 0.05)
 
-prob_alineada[fit_cv$pred$rowIndex] <- fit_cv$pred$pos
+for (p in rose_ratios) {
+  
+  train_ctrl <- trainControl(
+    method = "cv",
+    number = 10,
+    sampling = function(x, y) {
+      data_temp <- data.frame(x, Exited = y)
+      data_rose <- ROSE(Exited ~ ., data = data_temp, p = p, seed = 1)$data
+      list(
+        x = data_rose[, -which(names(data_rose)=="Exited")],
+        y = data_rose$Exited
+      )
+    },
+    classProbs = TRUE,
+    summaryFunction = twoClassSummary,
+    savePredictions = "final"
+  )
+  
+  # Entrenar model
+  fit <- train(
+    Exited ~ .,
+    data = datatrain,
+    method = "glm",
+    family = binomial,
+    trControl = train_ctrl,
+    metric = "ROC"
+  )
+  
+  
+  prob_train <- fit$pred$pos
+  obs_train  <- fit$pred$obs
+  
 
-#tornem a transformar a numèrica la variable sortida
-y_numeric <- ifelse(datatrain$Exited == "pos", 1, 0)
+  prob_test  <- predict(fit, datatrain, type="prob")[, "pos"]
+  obs_test   <- datatrain$Exited
+  
+
+  for (cut in cutpoints) {
+    
+    # TRAIN
+    pred_train_cut <- factor(ifelse(prob_train > cut, "pos", "neg"),
+                             levels = c("neg","pos"))
+    kpi_train <- compute_kpis(obs_train, pred_train_cut, prob_train)
+    
+    # TEST
+    pred_test_cut <- factor(ifelse(prob_test > cut, "pos", "neg"),
+                            levels = c("neg","pos"))
+    kpi_test <- compute_kpis(obs_test, pred_test_cut, prob_test)
+    
+    
+    results_all <- rbind(results_all, data.frame(
+  ROSE_p = p,
+  Cutoff = cut,
+  
+
+  F1_Train   = kpi_train$F1,
+  F1_Test    = kpi_test$F1,
+  Sens_Train = kpi_train$Sensitivity,
+  Sens_Test  = kpi_test$Sensitivity,
+  Spec_Train = kpi_train$Specificity,
+  Spec_Test  = kpi_test$Specificity,
+  
+  
+
+  PPV_Train  = kpi_train$PPV,
+  PPV_Test   = kpi_test$PPV,
+  NPV_Train  = kpi_train$NPV,
+  NPV_Test   = kpi_test$NPV,
+  ACC_Train  = kpi_train$Accuracy,
+  ACC_Test   = kpi_test$Accuracy,
+  AUC_Train  = kpi_train$AUC,
+  AUC_Test   = kpi_test$AUC
+))
+  }
+}
 ```
-
-Evaluem els KPI per a diferents cutoff per observar les variacions que es donen
 ```{r}
-cutpoints <- seq(0.1, 0.9, by=0.05)
-resultsCV   <- data.frame()
-
-resultsCV <- data.frame(
-  Cutpoint    = numeric(),
-  Sensitivity = numeric(),
-  Specificity = numeric(),
-  PPV         = numeric(),
-  NPV         = numeric(),
-  PLR         = numeric(),
-  NLR         = numeric(),
-  Accuracy    = numeric(),
-  F1          = numeric()
-)
-
-
-f1_score_cm <- function(cm){
-  TP <- cm["pos","pos"]
-  FP <- cm["pos","neg"]
-  FN <- cm["neg","pos"]
-  
-  precision <- TP / (TP + FP)
-  recall    <- TP / (TP + FN)
-  
-  f1 <- 2 * (precision * recall) / (precision + recall)
-  return(round(f1, 3))
-}
-
-
-for(c in cutpoints){
-  m <- performance_metrics(y_numeric, prob_alineada, cutoff=c)
-  
-  resultsCV <- rbind(resultsCV, data.frame(
-    Cutpoint    = c, 
-    Sensitivity = m$Sensitivity,
-    Specificity = m$Specificity,
-    PPV         = m$PPV,
-    NPV         = m$NPV, 
-    PLR         = m$PLR, 
-    NLR         = m$NLR,
-    Accuracy    = m$Accuracy,
-    F1          = f1_score_cm(m$ConfusionMatrix)
-  ))
-}
-
-resultsCV
+results_all
 ```
-
+ROSE 25, cutoff 25
+ROSE 0.35	cutoff 0.35	
+ROSE 0.40	cutoff 0.40
 
 #LOOCV (leave One Out Cross Validation)
 
 ```{r}
 library(caret)
-
-set.seed(123)
-datatrain <- data_reducida_balanceada[1:7000, !(names(data_reducida_balanceada) %in% "group")]
-datatest<-data_reducida_balanceada[7001:10000,!(names(data_reducida_balanceada) %in% "group")]
-#  Convertimos Exited a factor neg/pos
-# datatrain$Exited <- factor(datatrain$Exited, levels=c(0,1), labels=c("neg","pos"))
-
-#  Control LOOCV
-ctrl_loocv <- trainControl(
-  method = "LOOCV",
-  classProbs = TRUE,
-  summaryFunction = twoClassSummary,
-  savePredictions = TRUE   # importante para obtener predicciones out-of-fold
-)
-
-# Entrenamos modelo logístico con LOOCV
-fit_loocv <- train(
-  Exited ~ .,
-  data = datatrain,
-  method = "glm",
-  family = "binomial",
-  trControl = ctrl_loocv,
-  metric = "ROC"
-)
-
-#  Probabilidades out-of-fold en el orden original
-prob_loocv <- numeric(nrow(datatrain))
-prob_loocv[fit_loocv$pred$rowIndex] <- fit_loocv$pred$pos
-
-#  Convertimos Exited a 0/1 para métricas
-y_numeric <- ifelse(datatrain$Exited == "pos", 1, 0)
-
-cutpoints <- seq(0.1, 0.9, by=0.05)
-resultsLOOCV   <- data.frame()
-
-resultsLOOCV <- data.frame(
-  Cutpoint    = numeric(),
-  Sensitivity = numeric(),
-  Specificity = numeric(),
-  PPV         = numeric(),
-  NPV         = numeric(),
-  PLR         = numeric(),
-  NLR         = numeric(),
-  Accuracy    = numeric(),
-  F1          = numeric()
-)
+library(pROC)
+library(ROSE)
 
 
-f1_score_cm <- function(cm){
-  TP <- cm["pos","pos"]
-  FP <- cm["pos","neg"]
-  FN <- cm["neg","pos"]
+# Diferents proporcions de balanceig ROSE
+rose_ratios <- seq(0.25, 0.5, by = 0.05)
+
+# Cutoffs per transformar probabilitats en classes
+cutpoints <- seq(0.1, 0.9, by = 0.05)
+
+# Dataframe final amb tots els resultats
+results_all <- data.frame()
+
+n <- nrow(datatrain)
+
+for (p in rose_ratios) {
   
-  precision <- TP / (TP + FP)
-  recall    <- TP / (TP + FN)
+  cat("======= PROVANT BALANCEIG p =", p, "=======\n")
   
-  f1 <- 2 * (precision * recall) / (precision + recall)
-  return(round(f1, 3))
+  # Probabilitats out-of-fold inicialitzades
+  prob_loocv <- numeric(n)
+  
+  # Loop LOOCV
+  for (i in 1:n) {
+    
+    # Train = totes les files menys la i
+    train_idx <- setdiff(1:n, i)
+    test_idx  <- i
+    
+    train_data <- datatrain[train_idx, ]
+    test_data  <- datatrain[test_idx, ]
+    
+    # Aplicar ROSE al training set
+    train_bal <- ROSE(Exited ~ ., data = train_data, p = p, seed = 123)$data
+    
+    # Entrenar GLM
+    fit <- glm(Exited ~ ., data = train_bal, family = binomial)
+    
+    # Predicció per la fila deixada fora
+    prob_loocv[i] <- predict(fit, newdata = test_data, type = "response")
+    
+  }
+  
+  # Un cop tenim probabilitats out-of-fold, calculem KPI per cada cutoff
+  for (c in cutpoints) {
+    
+    pred_class <- factor(ifelse(prob_loocv > c, "pos", "neg"),
+                         levels = c("neg","pos"))
+    
+    kpi <- compute_kpis(datatrain$Exited, pred_class, prob_loocv)
+    
+    results_all <- rbind(results_all, data.frame(
+      ROSE_p      = p,
+      Cutpoint    = c,
+      F1_Train    = kpi$F1,
+      F1_Test     = kpi$F1,          # LOOCV només té out-of-fold
+      Spec_Train  = kpi$Specificity,
+      Spec_Test   = kpi$Specificity,
+      Sens_Train  = kpi$Sensitivity,
+      Sens_Test   = kpi$Sensitivity,
+      PPV         = kpi$PPV,
+      NPV         = kpi$NPV,
+      Accuracy    = kpi$Accuracy,
+      AUC         = kpi$AUC
+    ))
+  }
 }
 
-
-for(c in cutpoints){
-  m <- performance_metrics(y_numeric, prob_alineada, cutoff=c)
-  
-  resultsLOOCV <- rbind(resultsLOOCV, data.frame(
-    Cutpoint    = c, 
-    Sensitivity = m$Sensitivity,
-    Specificity = m$Specificity,
-    PPV         = m$PPV,
-    NPV         = m$NPV, 
-    PLR         = m$PLR, 
-    NLR         = m$NLR,
-    Accuracy    = m$Accuracy,
-    F1          = f1_score_cm(m$ConfusionMatrix)
-  ))
-}
-
-resultsLOOCV
+results_all
 ```
 
 # Bootsrap
