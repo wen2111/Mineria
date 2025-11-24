@@ -14,7 +14,7 @@ En este script se realiza un modelo de clasificación binario con caret (cv=10) 
 
 Se utiliza la base de datos desbalanceada y se juega con el cutoff para hacer frente al desbalanceo.
 
-# Caret
+# Caret CV=10
 
 Preparación de los datos
 ```{r, echo=FALSE}
@@ -30,7 +30,7 @@ datatrain$NumOfProducts_grupo <- factor(datatrain$NumOfProducts_grupo)
 Trabajaremos a partir de datatrain, donde tenemos la respuesta Exited para todas las filas
 
 La idea es probar varios niveles de balanceo y de cutoff para encontrar el óptimo para ambos parámetros.
-```{r, echo=FALSE}
+```{r, include=FALSE}
 library(caret)
 library(ROSE)
 library(pROC)
@@ -140,21 +140,108 @@ ROSE 25, cutoff 25
 ROSE 0.35	cutoff 0.35	
 ROSE 0.40	cutoff 0.40
 
-#LOOCV (leave One Out Cross Validation)
+# GLM link probit
+
+```{r, include=FALSE}
+results_all <- data.frame()
+cutpoints <- seq(0.1, 0.9, by = 0.05)
+
+for (p in rose_ratios) {
+  
+  train_ctrl <- trainControl(
+    method = "cv",
+    number = 10,
+    sampling = function(x, y) {
+      data_temp <- data.frame(x, Exited = y)
+      data_rose <- ROSE(Exited ~ ., data = data_temp, p = p, seed = 1)$data
+      list(
+        x = data_rose[, -which(names(data_rose)=="Exited")],
+        y = data_rose$Exited
+      )
+    },
+    classProbs = TRUE,
+    summaryFunction = twoClassSummary,
+    savePredictions = "final"
+  )
+  
+  # Entrenar model
+  fit <- train(
+    Exited ~ .,
+    data = datatrain,
+    method = "glm",
+    family = binomial,
+    trControl = train_ctrl,
+    metric = "ROC"
+  )
+  
+  
+  prob_train <- fit$pred$pos
+  obs_train  <- fit$pred$obs
+  
+
+  prob_test  <- predict(fit, datatrain, type="prob")[, "pos"]
+  obs_test   <- datatrain$Exited
+  
+
+  for (cut in cutpoints) {
+    
+    # TRAIN
+    pred_train_cut <- factor(ifelse(prob_train > cut, "pos", "neg"),
+                             levels = c("neg","pos"))
+    kpi_train <- compute_kpis(obs_train, pred_train_cut, prob_train)
+    
+    # TEST
+    pred_test_cut <- factor(ifelse(prob_test > cut, "pos", "neg"),
+                            levels = c("neg","pos"))
+    kpi_test <- compute_kpis(obs_test, pred_test_cut, prob_test)
+    
+    
+    results_all <- rbind(results_all, data.frame(
+  ROSE_p = p,
+  Cutoff = cut,
+  
+
+  F1_Train   = kpi_train$F1,
+  F1_Test    = kpi_test$F1,
+  Sens_Train = kpi_train$Sensitivity,
+  Sens_Test  = kpi_test$Sensitivity,
+  Spec_Train = kpi_train$Specificity,
+  Spec_Test  = kpi_test$Specificity,
+  
+  
+
+  PPV_Train  = kpi_train$PPV,
+  PPV_Test   = kpi_test$PPV,
+  NPV_Train  = kpi_train$NPV,
+  NPV_Test   = kpi_test$NPV,
+  ACC_Train  = kpi_train$Accuracy,
+  ACC_Test   = kpi_test$Accuracy,
+  AUC_Train  = kpi_train$AUC,
+  AUC_Test   = kpi_test$AUC
+))
+  }
+}
+```
 
 ```{r}
+results_all
+```
+
+Parece que los resultados no varían mucho cambiando la función link. Logit y Probit dan resultados similares.
+
+#LOOCV (leave One Out Cross Validation)
+
+```{r, include=FALSE}
 library(caret)
 library(pROC)
 library(ROSE)
 
-
-# Diferents proporcions de balanceig ROSE
 rose_ratios <- seq(0.25, 0.5, by = 0.05)
 
-# Cutoffs per transformar probabilitats en classes
+
 cutpoints <- seq(0.1, 0.9, by = 0.05)
 
-# Dataframe final amb tots els resultats
+
 results_all <- data.frame()
 
 n <- nrow(datatrain)
@@ -212,6 +299,9 @@ for (p in rose_ratios) {
   }
 }
 
+```
+
+```{r}
 results_all
 ```
 
