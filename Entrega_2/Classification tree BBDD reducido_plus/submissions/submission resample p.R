@@ -19,8 +19,9 @@ seeds <- vector(mode = "list", length = 6)
 for(i in 1:5) seeds[[i]] <- sample.int(1000, 10)
 seeds[[6]] <- sample.int(1000, 1)
 
-# Balancear datos a 50-50 con ROSE
-data_balanced <- ROSE(Exited ~ ., data = datatrainfull, p = 0.45, seed = 123)$data
+# Balancear datos a 40-60 con ROSE
+p=0.4
+data_balanced <- ROSE(Exited ~ ., data = datatrainfull, p = p, seed = 123)$data
 
 # Entrenar modelo
 model <- train(Exited ~ ., 
@@ -34,8 +35,13 @@ model <- train(Exited ~ .,
                ))
 model
 
-predicciones <- predict(model, newdata = datatest_reducido)
-predicciones_factor <- ifelse(predicciones == "1", "Yes", "No")
+pred_train <- predict(model, datatest_reducido, type="prob")
+pclass<-c()
+for(i in 1:nrow(datatest_reducido)){
+  pclass[i]<-ifelse(pred_train[i,2]>=p,1,0)
+}
+pclass<-as.factor(pclass)
+predicciones_factor <- ifelse(pclass == "1", "Yes", "No")
 
 # Crear dataframe con ID y predicción
 resultado_final <- data.frame(
@@ -44,4 +50,4 @@ resultado_final <- data.frame(
 )
 
 # Guardar en Excel
-write.csv(resultado_final, "~/GitHub/Mineria/Entrega_2/Classification tree BBDD reducido_plus/submit_reducida_plus_balance45.csv", row.names = FALSE)
+write.csv(resultado_final, "~/GitHub/Mineria/Entrega_2/Classification tree BBDD reducido_plus/submit_reducida_plus_balance40.csv", row.names = FALSE)
