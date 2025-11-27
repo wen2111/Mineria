@@ -29,10 +29,13 @@ library(rpart)
 library(caret)
 library(rpart.plot)
 library(ROSE)
+library(dplyr)
 ```
 
 # Base de datos transformada SIN BALANCEAR
 ```{r}
+data_transformada <- data_transformada %>%
+  mutate(across(where(is.numeric), ~ as.numeric(scale(.x))))
 data4tree<-data_transformada[0:7000,]
 datatest<-data_transformada[7001:10000,]
 ind <- sample(1:nrow(data4tree), 0.7*nrow(data4tree))
