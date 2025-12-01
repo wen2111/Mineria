@@ -55,6 +55,14 @@ save(data_sin_duplicados_f, file = "data_transformada_fi.RData")
 # Guardar ambos datasets en un único archivo RData
 #save(data_sin_duplicados, data_sin_duplicados_e, file = "data_transformada_todos.RData")
 
+# Con la base de datos reducido 
+data_reducida_r<-data_reducida
+reducido <- data_reducida_r[data_reducida_r$grupo == "train" & 
+                                     duplicated(data_reducida_r[data_reducida_r$grupo == "train", ]), ]
+wich
+# Ver resultados
+duplicados_test
+# Con la de reducido plus
 
 
 
