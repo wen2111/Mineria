@@ -1,0 +1,96 @@
+---
+title: "reducidos"
+author: "Laura Belmonte"
+date: "2025-12-01"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Entramos la base de datos: 
+```{r}
+load("~/Documents/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+```
+
+```{r}
+data_transformada_n<-data_transformada
+summary(data_transformada_n)
+duplicated(data_transformada_n) 
+data_transformada_n[duplicated(data_transformada_n), ]
+```
+Obtenemos que no hay ningun registro repetido, miramos i algun individuo tiene al menos esta serie de caracteristicas iguales. 
+
+Se elige un conjunto razonable de columnas “estables” y se eliminan filas repetidas según ese conjunto. 
+
+Las columas a continuación, son aquellas las columnas que no deberían cambiar nunca para una misma persona son:
+
+```{r}
+keys <- c("Gender", "Age", "Geography", "MaritalStatus", "EducationLevel")
+duplicado_train <- duplicated(data_transformada_n[data_transformada_n$group == "train", keys])
+
+# Crear un vector lógico para todas las filas
+keep <- rep(TRUE, nrow(data_transformada_n))
+
+# Marcar como FALSE las filas duplicadas de 'train' (excepto la primera)
+keep[data_transformada_n$group == "train"][duplicado_train] <- FALSE
+data_sin_duplicados <- data_transformada_n[keep, ]
+dim(data_sin_duplicados)
+```
+
+Más estricto
+
+```{r}
+
+keys_e <- c("Gender", "Age", "Geography", "MaritalStatus")
+# Identificar duplicados dentro de 'train'
+duplicado_train <- duplicated(data_transformada_n[data_transformada_n$group == "train", keys_e])
+
+# Crear vector lógico para mantener todas las filas por defecto
+keep <- rep(TRUE, nrow(data_transformada_n))
+
+# Marcar como FALSE las filas duplicadas de 'train' (excepto la primera)
+keep[data_transformada_n$group == "train"][duplicado_train] <- FALSE
+
+# Filtrar el dataframe
+data_sin_duplicados_e <- data_transformada_n[keep, ]
+dim(data_sin_duplicados_e)
+```
+
+```{r}
+
+keys_f <- c("Gender", "Age", "Geography", "MaritalStatus", "EducationLevel", "LoanStatus","HasCrCard","NetPromoterScore","CustomerSegment","LoanStatus")
+# Identificar duplicados solo dentro de train, según keys_f
+dup_train <- duplicated(data_transformada_n[data_transformada_n$group == "train", keys_f])
+
+# Crear vector keep
+keep <- rep(TRUE, nrow(data_transformada_n))
+
+# Marcar para eliminar solamente los duplicados de train 
+keep[data_transformada_n$group == "train"][dup_train] <- FALSE
+
+# Filtrar
+data_sin_duplicados_f <- data_transformada_n[keep, ]
+dim(data_sin_duplicados_f)
+```
+
+La base de datos que hemos de utilizar, *Data_reducida* o *Data_reducida_plus* 
+
+## Data Reducida, reducido_plus
+
+Ninguna de la dos bases de datos principales tienen registros repetidos
+```{r}
+data_reducida_r<-data_reducida
+sum(duplicated(data_reducida_r$grupo=="train"))
+
+
+data_reducida_plus_sin<-data_reducida_plus
+sum(duplicated(data_reducida_plus_sin$grupo=="train"))
+```
+
+```{r}
+save(data_sin_duplicados, file = "data_transformada_r.RData")
+save(data_sin_duplicados_e, file = "data_transformada_re.RData")
+save(data_sin_duplicados_f, file = "data_transformada_fi.RData")
+```
