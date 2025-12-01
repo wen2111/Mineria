@@ -1,0 +1,120 @@
+---
+title: "Boosting"
+author: "Siling Guo"
+date: "2025-11-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Carga de datos
+```{r}
+str(data_reducida_plus)
+table(data_reducida_plus$Exited)
+```
+
+# Preparación de datos
+```{r}
+# subset y preparacion
+train_imputado <- subset(data_imputado, group == "train") # 7000 obs
+test_imputado  <- subset(data_imputado,
+                         group == "test") # 3000 obs variable respuesta vacia
+
+vars_drop <- c("ID", "Surname", "group")
+train_imputado <- train_imputado[, !(names(train_imputado) %in% vars_drop)]
+test_imputado  <- test_imputado[, !(names(test_imputado) %in% vars_drop)]
+
+# levels para "exited"
+train_imputado$Exited <- factor(train_imputado$Exited,
+                                levels = c("1","0"),
+                                labels = c("Yes","No"))
+```
+
+# Modelo XGBoost con caret
+```{r}
+library(caret)
+
+set.seed(1)
+
+# cv
+trControl <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE, 
+  summaryFunction = twoClassSummary 
+)
+
+# tuneGrid
+tuneGrid <- expand.grid(
+  nrounds          = c(100, 200),   
+  max_depth        = c(2, 4),     
+  eta              = c(0.05, 0.1),
+  gamma            = 0,
+  colsample_bytree = 0.8,
+  min_child_weight = 1,
+  subsample        = 0.8
+)
+
+# XGBoost model de clasificación
+xgb_fit <- train(
+  Exited ~ .,              # Exited factor(Yes/No)
+  data      = train_imputado,
+  method    = "xgbTree",
+  trControl = trControl,
+  tuneGrid  = tuneGrid,
+  metric    = "ROC",  # ROC（twoClassSummary里自带）
+  verbosity = 0
+)
+
+xgb_fit
+xgb_fit$bestTune
+varImp(xgb_fit)
+```
+
+# Modelo GBM con caret
+```{r}
+library(caret)
+
+set.seed(1)
+trControl <- trainControl(method = "cv", number = 5)
+
+# 用 XGBoost 做分类
+caret.xgb <- train(
+  Exited ~ .,
+  method   = "xgbTree",
+  data     = train_imputado,
+  trControl = trControl,
+  verbosity = 0
+)
+
+caret.xgb
+caret.xgb$bestTune
+
+tuneGrid <- expand.grid(
+  nrounds          = c(50, 100, 200),
+  max_depth        = c(2, 4, 6),
+  eta              = c(0.05, 0.1, 0.3),
+  gamma            = 0,
+  colsample_bytree = 0.8,
+  min_child_weight = 1,
+  subsample        = 0.8
+)
+
+caret.xgb <- train(
+  Exited ~ .,
+  method   = "xgbTree",
+  data     = train_imputado,
+  trControl = trControl,
+  tuneGrid  = tuneGrid,
+  verbosity = 0
+)
+caret.xgb
+caret.xgb$bestTune
+```
+
+```{r}
+pred_test <- predict(caret.xgb, newdata = test_imputado)
+confusionMatrix(pred_test, test_imputado$Exited)
+```
