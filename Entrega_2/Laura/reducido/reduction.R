@@ -34,18 +34,19 @@ sum(duplicated(data_sur$surname_clean) | duplicated(data_sur$surname_clean, from
 
 keys <- c("Gender", "Age", "Geography", "MaritalStatus", "EducationLevel")
 
-data_sin_duplicados <- data_transformada_n[!duplicated(data_transformada_n[, keys]), ]
-sum(duplicated(data_transformada_n[, keys]))
+data_sin_duplicados <- data_transformada_n[!(duplicated(data_transformada_n[, keys]) & data_transformada_n$group == "train"), ]
+sum(data_sin_duplicados$group=="train")
+
 #Un total de 7473
 
 # Más estricto: 
 keys_e <- c("Gender", "Age", "Geography", "MaritalStatus", "EducationLevel", "LoanStatus")
-data_sin_duplicados_e <- data_transformada_n[!duplicated(data_transformada_n[, keys_e]), ]
+data_sin_duplicados_e <- data_transformada_n[!(duplicated(data_transformada_n[, keys_e]) & data_transformada_n$group == "train"), ]
 
 save(data_sin_duplicados, file = "data_transformada_r.RData")
 save(data_sin_duplicados_e, file = "data_transformada_re.RData")
 # Guardar ambos datasets en un único archivo RData
-save(data_sin_duplicados, data_sin_duplicados_e, file = "data_transformada_todos.RData")
+#save(data_sin_duplicados, data_sin_duplicados_e, file = "data_transformada_todos.RData")
 
 
 
