@@ -1,6 +1,22 @@
 library(caret)
-mydata <- data_reducida_plus
+library(DAAG)
+library(mlbench)
+library(pROC)
+library(printr)
+library(randomForest)
+library(ranger)
+
+mydata <- data_imputado
+mydata$CustomerSegment<-NULL
+mydata$LoanStatus<-NULL
+mydata$IsActiveMember<-NULL
+mydata$Gender<-NULL
+mydata$ComplaintsCount<-NULL
+mydata$HasCrCard<-NULL
+mydata$SavingsAccountFlag<-NULL
 mydata$group<-NULL
+mydata$Surname<-NULL
+mydata$ID<-NULL
 # SEPARAR TRAIN Y TEST
 train <- mydata[1:7000,]
 test <- mydata[7001:10000,]  # 3000 obs
@@ -9,23 +25,27 @@ test <- mydata[7001:10000,]  # 3000 obs
 train$Exited <- factor(train$Exited,
                        levels = c("0","1"),  
                        labels = c("No","Yes")) 
-test$Exited <- factor(test$Exited,
-                       levels = c("0","1"),  
-                       labels = c("No","Yes")) 
-
 # PARTICION TRAIN2/TEST2
 
 set.seed(123)
-index <- createDataPartition(train$Exited, p = 0.8, list = FALSE)
+index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
+
+############## 0
+
+rf <- randomForest(Exited ~ ., data = train2,)
+rf
+varImpPlot(rf)
 
 ################### 1
 
 mtry.class <- sqrt(ncol(train2) - 1)
 tuneGrid <- data.frame(mtry = floor(c(mtry.class/2, mtry.class, 2*mtry.class)))
+tuneGrid
 set.seed(123)
-rf.caret <- train(Exited ~ ., data = train2,method = "rf",tuneGrid = tuneGrid)
+rf.caret <- train(Exited ~ ., data = train2,method = "rf",
+                  tuneGrid = tuneGrid,nodesize=20,maxnodes=50)
 plot(rf.caret)
 rf.caret
 pred4 <- predict(rf.caret, newdata = test2)
@@ -53,10 +73,10 @@ caret::postResample(pred4, obs)
 ptest <- predict(rf.caret, test2, type = 'prob')
 ptrain <- predict(rf.caret, train2, type = 'prob')
 
-ptrain <- ifelse(ptrain[,2] > 0.1, "Yes", "No")
+ptrain <- ifelse(ptrain[,2] > 0.05, "Yes", "No")
 ptrain <- factor(ptrain, levels = c("No", "Yes"))
 
-ptest <- ifelse(ptest[,2] > 0.1, "Yes", "No")
+ptest <- ifelse(ptest[,2] > 0.05, "Yes", "No")
 ptest <- factor(ptest, levels = c("No", "Yes"))
 
 confusionMatrix(ptrain, train2$Exited, positive="Yes")
@@ -92,7 +112,7 @@ write.csv(submission, "rf2.csv", row.names = FALSE)
 
 ctrl_rf <- trainControl(
   method = "cv",         # 5-fold cross-validation
-  number = 10,
+  number = 8,
   classProbs = TRUE,     # necesario para AUC
   summaryFunction = twoClassSummary,
   sampling = "smote",    # balanceo automático
@@ -111,7 +131,9 @@ fit_rf <- train(
   metric = "ROC",          # optimizar AUC
   trControl = ctrl_rf,
   tuneGrid = tuneGrid,
-  ntree = 500,             # número de árboles
+  ntree = 500,        # número de árboles
+  nodesize=30, maxnodes=50
+  
 )
 
 plot(fit_rf)
@@ -139,10 +161,10 @@ caret::postResample(pred4, obs)
 ptest <- predict(fit_rf, test2, type = 'prob')
 ptrain <- predict(fit_rf, train2, type = 'prob')
 
-ptrain <- ifelse(ptrain[,2] > 0.2, "Yes", "No")
+ptrain <- ifelse(ptrain[,2] > 0.15, "Yes", "No")
 ptrain <- factor(ptrain, levels = c("No", "Yes"))
 
-ptest <- ifelse(ptest[,2] > 0.2, "Yes", "No")
+ptest <- ifelse(ptest[,2] > 0.15, "Yes", "No")
 ptest <- factor(ptest, levels = c("No", "Yes"))
 
 confusionMatrix(ptrain, train2$Exited, positive="Yes")
@@ -152,63 +174,3 @@ precision <- cm$byClass["Precision"]     # TP / (TP + FP)
 recall <- cm$byClass["Sensitivity"]      # TP / (TP + FN)
 f1 <- 2 * (precision * recall) / (precision + recall)
 f1
-
-# ---------------------------
-# Instalar si no lo tienes
-#install.packages("MLmetrics")
-
-# Cargar el paquete
-library(MLmetrics)
-
-find_best_threshold <- function(probs, actuals) {
-  thresholds <- seq(0.1, 0.9, by = 0.01)
-  f1_scores <- sapply(thresholds, function(t) {
-    preds <- factor(ifelse(probs > t, "Yes", "No"), levels = c("No","Yes"))
-    F1_Score(y_true = actuals, y_pred = preds, positive = "Yes")
-  })
-  best <- thresholds[which.max(f1_scores)]
-  return(best)
-}
-
-best_thresh <- find_best_threshold(ptest[,2], test2$Exited)
-cat("Mejor umbral según F1 en test:", best_thresh, "\n")
-
-ptest <- ifelse(ptest[,2] > 0.46, "Yes", "No")
-ptest <- factor(ptest, levels = c("No", "Yes"))
-
-(cm<-confusionMatrix(ptest, test2$Exited, positive="Yes"))
-
-precision <- cm$byClass["Precision"]     # TP / (TP + FP)
-recall <- cm$byClass["Sensitivity"]      # TP / (TP + FN)
-f1 <- 2 * (precision * recall) / (precision + recall)
-f1
-
-##################333 3
-
-
-rf <- randomForest(Exited ~ ., data = train2,max_features="sqrt",min_samples_split=10, min_samples_leaf=5,max_depth=10)
-rf
-plot(rf,main="")
-legend("right", colnames(rf$err.rate), lty = 1:5, col = 1:6)
-
-
-ptest <- predict(rf, test2, type = 'prob')
-ptrain <- predict(rf, train2, type = 'prob')
-
-ptrain <- ifelse(ptrain[,2] > 0.24, "Yes", "No")
-ptrain <- factor(ptrain, levels = c("No", "Yes"))
-
-ptest <- ifelse(ptest[,2] > 0.24, "Yes", "No")
-ptest <- factor(ptest, levels = c("No", "Yes"))
-
-confusionMatrix(ptrain, train2$Exited, positive="Yes")
-(cm<-confusionMatrix(ptest, test2$Exited, positive="Yes"))
-
-precision <- cm$byClass["Precision"]     # TP / (TP + FP)
-recall <- cm$byClass["Sensitivity"]      # TP / (TP + FN)
-f1 <- 2 * (precision * recall) / (precision + recall)
-f1
-
-
-pred3 <- predict(rf, newdata = test)
-caret::confusionMatrix(pred3, test$yesno,positive="y") 

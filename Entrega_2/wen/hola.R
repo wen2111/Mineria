@@ -1,5 +1,7 @@
-
-data <- data_imputado
+library(caret)
+library(ROSE)
+library(smotefamily)
+data <- data_reducida
 
 # SEPARAR TRAIN Y TEST
 train <- subset(data, group == "train") # 7000 obs
@@ -11,8 +13,8 @@ test$group  <- NULL
 
 # LABELS PARA EXITED
 train$Exited <- factor(train$Exited,
-                       levels = c("1","0"),
-                       labels = c("Yes","No"))
+                       levels = c("0","1"),
+                       labels = c("No","Yes"))
 table(train$Exited)
 
 set.seed(123)
@@ -20,46 +22,43 @@ index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 
 train2 <- train[index,]     # Entrenamiento interno
 test2  <- train[-index, ]    # Validación interna
-
+#str(data_imputado)
 # BALANCEO SOLO EN TRAIN2
-data_imputada_balanceada <- ROSE(
+train2_balanceada <- ROSE(
   Exited ~ .,
   data = train2,
   p = 0.4,      # 40% Yes, 60% No
   seed = 123
 )$data
 
-
 # COMPROBAR BALANCEO
 (table(train2$Exited))                     # Antes del balanceo
-(table(data_imputada_balanceada$Exited))  # Después del balanceo
+(table(train2_balanceada$Exited))  # Después del balanceo
 ################################ FIN ###########################################
-
-# hacer un load de data_imputado balanceada i dataaaaaaaaaaaaaaaaaaaaaaa
-library(caret)
-train2<-data_imputada_balanceada[,c(1,3,8,9,13,20)]
-test   <- data_reducida[7001:10000, -c(5,8)]
-
-train2$Exited<-factor(ifelse(train2$Exited %in% c("Yes", 1), "1", "0"), levels = c("0","1"))
-
-
 # MODELOS GLM
 
 # Logit
-modelo_logit <- glm(Exited ~ ., data = train2, family = binomial(link = "logit"))
+modelo_logit <- glm(Exited ~ ., data = train2_balanceada, family = binomial(link = "logit"))
 
 # Probit
-modelo_probit <- glm(Exited ~ ., data = train2, family = binomial(link = "probit"))
+modelo_probit <- glm(Exited ~ ., data = train2_balanceada, family = binomial(link = "probit"))
 
 # matrix para train2
-pred_logit_train2 <- predict(modelo_logit, newdata = train2, type = "response")
-pred_probit_train2 <- predict(modelo_probit, newdata = train2, type = "response")
+pred_logit_train2 <- predict(modelo_logit, newdata = train2_balanceada, type = "response")
+pred_probit_train2 <- predict(modelo_probit, newdata = train2_balanceada, type = "response")
 
-class_logit_train2 <- ifelse(pred_logit_train2 > (1/3), 1, 0)
-class_probit_train2 <- ifelse(pred_probit_train2 > (1/3), 1, 0)
+class_logit_train2 <- ifelse(pred_logit_train2 > 0.5, 1, 0)
+class_probit_train2 <- ifelse(pred_probit_train2 > 0.5, 1, 0)
 
-(conf_logit_train2 <- confusionMatrix(as.factor(class_logit_train2), train2$Exited,positive = "1"))
-(conf_probit_train2 <- confusionMatrix(as.factor(class_probit_train2), train2$Exited,positive = "1"))
+class_logit_train2 <- factor(class_logit_train2,
+                       levels = c("0","1"),
+                       labels = c("No","Yes"))
+class_probit_train2 <- factor(class_probit_train2,
+                             levels = c("0","1"),
+                             labels = c("No","Yes"))
+
+(conf_logit_train2 <- confusionMatrix(class_logit_train2, train2_balanceada$Exited,positive = "Yes"))
+(conf_probit_train2 <- confusionMatrix(class_probit_train2, train2_balanceada$Exited,positive = "Yes"))
 
 # Función para calcular F1 desde confusionMatrix
 calcular_f1 <- function(conf){
@@ -81,7 +80,7 @@ library(caret)
 mejor_umbral_f1 <- function(prob, real){
   
   real <- as.factor(real)
-  umbrales <- seq(0.11, 1, by = 0.01)
+  umbrales <- seq(0.01, 1, by = 0.01)
   
   f1_scores <- sapply(umbrales, function(t){
     pred <- ifelse(prob > t, "Yes", "No")
@@ -107,8 +106,8 @@ res_probit$F1
 
 
 # Convertir a clases segun umbral
-class_logit_test2  <- ifelse(pred_logit_test2  > 0.67, 1, 0)
-class_probit_test2 <- ifelse(pred_probit_test2 > 0.67, 1, 0)
+class_logit_test2  <- ifelse(pred_logit_test2  > 0.4, 1, 0)
+class_probit_test2 <- ifelse(pred_probit_test2 > 0.4, 1, 0)
 
 # Matriz de confusión
 # Convertir predicción binaria a "No"/"Yes"
@@ -122,11 +121,11 @@ test2$Exited <- factor(test2$Exited,
 # Ahora sí funciona
 z <- confusionMatrix(class_logit_test2_factor, test2$Exited, positive = "Yes")
 
-a<-confusionMatrix(as.factor(class_probit_test2), test2$Exited,positive = "1")
+a<-confusionMatrix(class_probit_test2, test2$Exited,positive = "Yes")
 
 # --- F1 de test2
-f1_logit_test2  <- calcular_f1(a)
-f1_probit_test2 <- calcular_f1(z)
+f1_logit_test2  <- calcular_f1(z)
+f1_probit_test2 <- calcular_f1(a)
 
 cat("F1 Logit - test2:", f1_logit_test2, "\n")
 cat("F1 Probit - test2:", f1_probit_test2, "\n")
