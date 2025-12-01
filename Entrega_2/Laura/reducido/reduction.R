@@ -40,11 +40,18 @@ sum(data_sin_duplicados$group=="train")
 #Un total de 7473
 
 # Más estricto: 
-keys_e <- c("Gender", "Age", "Geography", "MaritalStatus", "EducationLevel", "LoanStatus")
+keys_e <- c("Gender", "Age", "Geography", "MaritalStatus")
 data_sin_duplicados_e <- data_transformada_n[!(duplicated(data_transformada_n[, keys_e]) & data_transformada_n$group == "train"), ]
+
+# Más base columnas: 
+
+keys_f <- c("Gender", "Age", "Geography", "MaritalStatus", "EducationLevel", "LoanStatus","HasCrCard","NetPromoterScore","CustomerSegment","LoanStatus")
+data_sin_duplicados_f <- data_transformada_n[!(duplicated(data_transformada_n[, keys_f]) & data_transformada_n$group == "train"), ]
+
 
 save(data_sin_duplicados, file = "data_transformada_r.RData")
 save(data_sin_duplicados_e, file = "data_transformada_re.RData")
+save(data_sin_duplicados_f, file = "data_transformada_fi.RData")
 # Guardar ambos datasets en un único archivo RData
 #save(data_sin_duplicados, data_sin_duplicados_e, file = "data_transformada_todos.RData")
 
