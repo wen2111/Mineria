@@ -32,22 +32,15 @@ index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
 
-#smote
-
-train2<-SMOTE(train2[,-9],train2$Exited,K=5,dup_size = 1)
-train2<-train2$data
-names(train2)[9]<-"Exited"
-train2$Exited <- factor(train2$Exited, 
-                        levels = c("Yes", "No"))
 # BOOTSTRAP
 
 ctrl_boot_auc <- trainControl(method = "boot", 
-                              number = 200,         # 200 samples
+                              number =400 ,         
                               classProbs = TRUE,
-                              sampling = "up",
+                              #sampling = "up",
                               summaryFunction = twoClassSummary)
 fit_boot_auc <- train(Exited ~ ., data=train2, 
-                      method = "glm", family = "binomial",
+                      method = "glm", family = binomial(link = "cloglog"),
                       trControl = ctrl_boot_auc, metric = "ROC",
                       preProcess = c("center", "scale"))
 auc_boot <- fit_boot_auc$results$ROC
@@ -117,7 +110,7 @@ kpis <- data.frame(
 
 kpis
 
-#final train
++#final train
 
 set.seed(123)
 fit_final_glm <- train(
