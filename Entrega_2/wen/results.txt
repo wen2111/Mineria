@@ -1,0 +1,87 @@
+boot data_reducida
+glm cloglog con scale
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2581633 0.7418367 0.4115983           0.573399   0.7858430 0.4792096
+2   Test2  0.2709524 0.7290476 0.3912338           0.554023   0.7747748 0.4586108
+
+glm cauchy con scale
+  Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2608163 0.7391837 0.4075896          0.5714286   0.7830116 0.4757998
+2   Test2  0.2761905 0.7238095 0.3851030          0.5586207   0.7669670 0.4559099
+
+glm probitcon scale
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2546939 0.7453061 0.4122080          0.5389163   0.7992278 0.4671221
+2   Test2  0.2566667 0.7433333 0.4087719          0.5356322   0.7975976 0.4636816
+
+glm logit con scale
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2591837 0.7408163 0.4076756          0.5546798   0.7894466 0.4699499
+2   Test2  0.2633333 0.7366667 0.4006734          0.5471264   0.7861862 0.4625850
+
+cv
+glm logit con scale
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2591837 0.7408163 0.4076756          0.5546798   0.7894466 0.4699499
+2   Test2  0.2633333 0.7366667 0.4006734          0.5471264   0.7861862 0.4625850
+
+da lo mismo y ademas se tarda menos. por lo tanto aplicar cv. sin scale tmb me da lo mismo.
+
+## parece que funciona mejor el reducido solo.
+# con data_reducida_plus logit <- no mejora el test 
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2700000 0.7300000  0.400000          0.6068966   0.7621622 0.4821918
+2   Test2  0.2885714 0.7114286  0.374817          0.5885057   0.7435435 0.4579606
+
+
+cloglog
+
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.3222449 0.6777551 0.3552361          0.6817734   0.6767053 0.4670942
+2   Test2  0.3357143 0.6642857 0.3426573          0.6758621   0.6612613 0.4547564
+
+
+XGBOOST con dummy 0.7 MEJOR SIN HACER NADA DE BALANCEO
+
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2136735 0.7863265 0.4857398          0.5369458   0.8514801 0.5100608
+2   Test2  0.2185714 0.7814286 0.4757085          0.5402299   0.8444444 0.5059203
+
+0.8 train CON DUMMY
+
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2064286 0.7935714 0.5017452          0.4956897   0.8713964 0.4986990
+2   Test2  0.2042857 0.7957143 0.5069930          0.5000000   0.8729730 0.5034722
+
+0.8 train SIN DUMMY
+  Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2064286 0.7935714 0.5017452          0.4956897   0.8713964 0.4986990
+2   Test2  0.2042857 0.7957143 0.5069930          0.5000000   0.8729730 0.5034722
+
+
+con balanceo smote 0.8 train overfitting
+
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.1684911 0.8315089 0.7557384          0.7521552   0.8729730 0.7539425
+2   Test2  0.2071429 0.7928571 0.5000000          0.5137931   0.8657658 0.5068027
+
+
+0.7 train overfitting
+
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.1633136 0.8366864 0.7860215          0.7201970   0.8975547 0.7516710
+2   Test2  0.1990476 0.8009524 0.5210918          0.4827586   0.8840841 0.5011933
+
+con smote hecho fuera <- overfitting
+
+con smote interno train
+Dataset Error_rate Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2   0.215102 0.784898 0.4810863          0.4886700   0.8622909 0.4848485
+2   Test2   0.220000 0.780000 0.4700665          0.4873563   0.8564565 0.4785553
+
+con up <- MAL PORQUE UN P MUY ALTO<- SUEPR RARO
+  Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2046939 0.7953061 0.5060241          0.4965517   0.8733591 0.5012432
+2   Test2  0.2095238 0.7904762 0.4943311          0.5011494   0.8660661 0.4977169
+
+

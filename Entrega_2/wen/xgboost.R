@@ -1,11 +1,9 @@
-
-###############################################
-##### GLM BOOTSTRAP REDUCIDA SMOTE ####
-###############################################
+#xgboost
 
 library(caret)
 
 mydata <- data_reducida
+mydata$group<-NULL
 #dummifico
 x<-mydata[,-3] #quito la respuesta
 x<-x[,1:4] # cojo solo las cat
@@ -28,26 +26,40 @@ train$Exited <- factor(train$Exited,
 # PARTICION TRAIN2/TEST2
 
 set.seed(123)
+
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
 
-# cv
-
 ctrl_boot_auc <- trainControl(method = "cv", 
-                              number =5 ,         
+                              number = 5 ,         
                               classProbs = TRUE,
-                              summaryFunction = twoClassSummary)
+                              summaryFunction = f1_recall_summary, sampling = "up"
+                              )
+#library(smotefamily)
+#train2_bal <- SMOTE(train2[,-9],train2$Exited,K=5,dup_size = 1)
+#train2<-train2_bal$data
+#names(train2)[9]<-"Exited"
+#train2$Exited <- factor(train2$Exited, 
+#                        levels = c("No", "Yes"))
+
+library(MLmetrics)
+
+f1_recall_summary <- function(data, lev = NULL, model = NULL) {
+  precision <- Precision(y_true = data$obs, y_pred = data$pred, positive = "Yes")
+  recall <- Recall(y_true = data$obs, y_pred = data$pred, positive = "Yes")
+  f1 <- F1_Score(y_true = data$obs, y_pred = data$pred, positive = "Yes")
+  c(F1 = f1, Recall = recall, Precision = precision)
+}
+
 
 fit_boot_auc <- train(Exited ~ ., data=train2, 
-                      method = "glm", family = binomial(link = "cloglog"),
-                      trControl = ctrl_boot_auc, metric = "ROC",
-                      #preProcess = c("scale")
-                      )
-
-auc_boot <- fit_boot_auc$results$ROC
-cat('Area under curve (Bootstrap):', round(as.numeric(auc_boot),3), '\n')
-
+                      method = "xgbTree",
+                      trControl = ctrl_boot_auc, metric = "F1",
+                      preProcess = c("scale"),verbosity = 0
+)
+fit_boot_auc$results$F1
+fit_boot_auc$bestTune
 # Predicciones probabilísticas
 train_pred_prob <- predict(fit_boot_auc, newdata = train2, type = "prob")
 test_pred_prob  <- predict(fit_boot_auc, newdata = test2,  type = "prob")
@@ -114,12 +126,11 @@ kpis
 
 #final train
 set.seed(123)
-fit_final_glm <- train(
-  Exited ~ ., data = train,
-  method = "glm", family = binomial(link = "cloglog"),
-  trControl = ctrl_boot_auc,
-  metric = "ROC",
-  preProcess = c( "scale"))
+fit_final_glm <- train(Exited ~ ., data=train, 
+                       method = "xgbTree",
+                       trControl = ctrl_boot_auc, metric = "ROC",
+                       preProcess = c("scale"),verbosity = 0
+)
 
 train_pred_prob <- predict(fit_final_glm, newdata = train, type = "prob")
 train_pred_cut <- ifelse(train_pred_prob$Yes > best_th, "Yes", "No")
@@ -128,11 +139,11 @@ train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
 # Matrices de confusión
 conf_train <- confusionMatrix(train_pred_cut, train$Exited,positive = "Yes")
 conf_train
-
+f1_score(conf_train)
 
 # prediccion
 pred_kaggle_prob <- predict(fit_final_glm, newdata = test, type = "prob")
 pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > best_th, "Yes", "No")
 test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "glm_smote.csv", row.names = FALSE)
+write.csv(submission, "xgboost.csv", row.names = FALSE)
