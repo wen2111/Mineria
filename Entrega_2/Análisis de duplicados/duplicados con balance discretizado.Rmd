@@ -1,0 +1,69 @@
+---
+title: "Pruebas duplicados"
+output: html_document
+date: "2025-12-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(dplyr)
+```
+
+```{r}
+hist(data_reducida$Balance)
+```
+A continuación se hará la prueba de buscar valores duplicados discretizando la variable Balance
+```{r}
+cortes <- c(-Inf, 0, 30000, 60000, 90000, 120000, 150000, 180000, 210000, 240000, Inf) 
+etiquetas <- c("Cero", "0-30k", "30k-60k", "60k-90k", "90k-120k", "120k-150k", 
+                      "150k-180k", "180k-210k", "210k-240k", ">240k")
+data_reducida$Balance<- cut(
+    data_reducida$Balance, 
+    breaks = cortes, 
+    labels = etiquetas, 
+    right = TRUE, 
+    include.lowest = TRUE
+)
+```
+
+```{r}
+train_df <- data_reducida[data_reducida$group == "train", ]
+test_df  <- data_reducida[data_reducida$group == "test", ]
+```
+
+Conteo duplicados
+```{r}
+feature_cols <- setdiff(names(train_df), c("Exited", "group"))
+
+dup_completos_train <- train_df[
+  duplicated(train_df) |
+  duplicated(train_df, fromLast = TRUE),
+]
+
+nrow(dup_completos_train)
+```
+
+Número idéntico
+```{r}
+table(dup_completos_train$Exited)
+prop.table(table(dup_completos_train$Exited))
+```
+Duplicados más frecuentes en train:
+```{r}
+freq_dup_train <- train_df %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n      = n(),
+    n_0    = sum(Exited == 0),
+    n_1    = sum(Exited == 1),
+    prop_0 = mean(Exited == 0),
+    .groups = "drop"
+  ) %>%
+    arrange(desc(n), desc(n_0))
+freq_dup_train
+```
+
