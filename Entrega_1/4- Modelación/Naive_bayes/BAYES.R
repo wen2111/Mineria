@@ -1,0 +1,85 @@
+# Bayes
+# librerias
+library("caret")
+library("naivebayes")
+library("reshape")
+library("ggplot2")
+library(e1071)
+library(klaR)
+library(naniar)
+library(dplyr)
+
+#DATA 
+data<-data_imputado
+data <- data %>% select(Exited, everything())
+
+
+# Extraccion de train i test(kaggle)
+train <- subset(data, group == "train") # 7000 obs
+test <- subset(data,group == "test") # 3000 obs variable respuesta vacia
+
+vars_drop <- c("group")
+train <- train[, !(names(train) %in% vars_drop)]
+test <- test[,  !(names(test) %in% vars_drop)]
+
+# levels para "exited" porque lo exige bayes
+train$Exited <- factor(train$Exited,
+                                levels = c("1","0"),
+                                labels = c("Yes","No"))
+
+# TRAIN I TEST NUESTRO
+
+set.seed(123)
+index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
+train2 <- train[index, ] # train interno
+test2  <- train[-index, ] # test interno
+
+
+# MODELADO
+
+control <- trainControl(method = "repeatedcv", 
+                        number = 10, 
+                        repeats = 10, 
+                        verboseIter = FALSE,
+                        sampling = "up")
+
+hiperparametros <- data.frame(usekernel = FALSE, fL = 0, adjust=0)
+# tener cuidado con la x, hay que tener en cuenta el rango de datos
+#set.seed(123)
+mod <- train(y=train2$Exited, x= train2[,c(2:20)],
+              data = train2, 
+              method = "nb", 
+              tuneGrid = hiperparametros, 
+              metric = "Accuracy",	
+              trControl = control)
+# Predicciones
+train_pred <- predict(mod, train2, type = "raw")
+test_pred  <- predict(mod, test2, type = "raw")
+
+# Matrices de confusión
+conf_train <- confusionMatrix(train_pred, train2$Exited)
+conf_test  <- confusionMatrix(test_pred, test2$Exited)
+
+# F1-score
+f1_score <- function(cm){
+  precision <- cm$byClass["Precision"]
+  recall    <- cm$byClass["Sensitivity"]
+  f1 <- 2 * (precision * recall) / (precision + recall)
+  return(as.numeric(f1))
+}
+
+f1_train <- f1_score(conf_train)
+f1_test  <- f1_score(conf_test)
+
+# KPIs
+data.frame(
+  Dataset = c("Train", "Test"),
+  Error_rate = c(1-conf_train$overall["Accuracy"], 1-conf_test$overall["Accuracy"]),
+  Accuracy = c(conf_train$overall["Accuracy"], conf_test$overall["Accuracy"]),
+  Precision = c(conf_train$byClass["Pos Pred Value"], conf_test$byClass["Pos Pred Value"]),
+  Recall_Sensitivity = c(conf_train$byClass["Sensitivity"], conf_test$byClass["Sensitivity"]),
+  Specificity = c(conf_train$byClass["Specificity"], conf_test$byClass["Specificity"]),
+  F1_Score = c(f1_train, f1_test)
+)
+
+

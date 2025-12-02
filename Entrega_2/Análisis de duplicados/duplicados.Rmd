@@ -1,0 +1,155 @@
+---
+title: "Boosting try"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-12-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,echo=FALSE}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(dplyr)
+```
+
+```{r}
+train_df <- data_reducida[data_reducida$group == "train", ]
+test_df  <- data_reducida[data_reducida$group == "test", ]
+```
+duplicados:
+```{r}
+dup_completos_train <- train_df[
+  duplicated(train_df) |
+  duplicated(train_df, fromLast = TRUE),
+]
+
+nrow(dup_completos_train)
+
+```
+
+duplicados sin exited ni group:
+```{r, echo=FALSE}
+feature_cols <- setdiff(names(train_df), c("Exited", "group"))
+
+dup_features_train <- train_df[
+  duplicated(train_df[, feature_cols]) |
+  duplicated(train_df[, feature_cols], fromLast = TRUE),
+]
+
+nrow(dup_features_train)
+
+```
+Hay filas idénticas con distinto Exited?
+```{r, echo=FALSE}
+conflictos_train <- dup_features_train %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n = n(),
+    exited_values = n_distinct(Exited),
+    .groups = "drop"
+  ) %>%
+  filter(exited_values > 1)
+
+nrow(conflictos_train)
+```
+
+Qué valores de Exited tienen los duplicados?
+```{r}
+table(dup_completos_train$Exited)
+prop.table(table(dup_completos_train$Exited))
+```
+Contra la proporcion total:
+```{r}
+table(train_df$Exited)
+prop.table(table(train_df$Exited))
+```
+Cuáles son los duplicados más frecuentes en train:
+```{r, echo=FALSE}
+freq_dup_train <- train_df %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n      = n(),
+    n_0    = sum(Exited == 0),
+    n_1    = sum(Exited == 1),
+    prop_0 = mean(Exited == 0),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n))
+freq_dup_train
+```
+
+Ahora nos centramos en los patrones con Exited=1
+```{r, echo=FALSE}
+feature_cols <- setdiff(names(train_df), c("Exited", "group"))
+
+prop_1_duplicados <- train_df %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n_total = n(),
+    n_1     = sum(Exited == 1),
+    n_0     = sum(Exited == 0),
+    prop_1  = n_1 / n_total,
+    .groups = "drop"
+  ) %>%
+  filter(n_total > 1) %>%
+  arrange(desc(prop_1), desc(n_1))
+
+prop_1_duplicados
+
+```
+
+# Duplicados sin Balance=0
+
+Para Exited=0
+```{r}
+feature_cols <- setdiff(names(train_df), c("Exited", "group"))
+
+
+freq_dup_train <- train_df %>%
+  filter(Balance != 0) %>%  
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n      = n(),
+    n_0    = sum(Exited == 0),
+    n_1    = sum(Exited == 1),
+    prop_0 = mean(Exited == 0),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(prop_0), desc(n))
+
+freq_dup_train
+```
+
+No se observan repeticiones significativas
+
+```{r}
+feature_cols <- setdiff(names(train_df), c("Exited", "group"))
+
+freq_dup_train <- train_df %>%
+  filter(Balance != 0) %>% 
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n      = n(),
+    n_0    = sum(Exited == 0),
+    n_1    = sum(Exited == 1),
+    prop_0 = mean(Exited == 0),
+    prop_1 = mean(Exited == 1), 
+    .groups = "drop"
+  ) %>%
+  arrange(desc(prop_1), desc(n)) 
+
+freq_dup_train
+```
+Tampoco
+
+
+# DESCURBIMIENTO FINAL
+
+Dado que se ha descubierto que existen ciertos patrones significativos sobre la variable Exited cuando Balance=0 y ninguno cuando es diferente de 0, nos interesa comprobar cuantas observaciones hay con Balance=0 en test.
+```{r}
+nrow(test_df[test_df$Balance == 0, ])
+```
+Más de 1/3 de los datos test son contienen Balance=0. Proximos pasos: imponer reglas asociativas al modelo que impongan una clase para Exited para ciertas combinaciones de variables.

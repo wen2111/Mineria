@@ -1,4 +1,0 @@
-"0","p<-sapply(varNum, function(v) symmetry.test(data[[v]])$p.value)
-"
-"2","Error en sort(x) - mean(x): argumento no-numérico para operador binario
-"

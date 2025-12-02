@@ -1,0 +1,123 @@
+---
+title: "Transformació & Selecció"
+author: "Wenjia Ye"
+date: "2025-10-11"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Transformació
+
+S’ha decidit transformar les variables ComplaintsCount i NumOfProducts en variables categòriques, ja que en ambdós casos presenten una distribució molt desequilibrada.
+
+En el cas de ComplaintsCount, la gran majoria de clients no han presentat cap queixa, mentre que només una petita proporció n’ha fet una o més. Per tant, es transforma en una variable binària amb dos nivells:
+
+- 0: el client no s’ha queixat
+
+- 1: el client sí que s’ha queixat
+
+De manera similar, la variable NumOfProducts mostra que la major part dels clients tenen un sol producte, uns quants en tenen dos, i només una minoria en té tres o més. Per això, s’ha recodificat en tres categories:
+
+- Clients amb 1 producte
+
+- Clients amb 2 productes
+
+- Clients amb 3 o més productes
+
+En tots dos casos, la transformació de variables numèriques a categòriques permet reduir la influència de valors poc freqüents, evitar soroll estadístic i facilitar la interpretació dels resultats. A més, aquesta simplificació pot contribuir a millorar l’estabilitat i rendiment dels models predictius, especialment en aquells que treballen millor amb variables discretes o amb distribucions equilibrades.
+
+```{r}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+data<-data_imputado
+data$ComplaintsCount_bin <- ifelse(data$ComplaintsCount == 0, 0, 1)
+data$ComplaintsCount_bin <- factor(data$ComplaintsCount_bin,
+                                   levels = c(0, 1),
+                                   labels = c("No_queja", "Queja"))
+
+data$NumOfProducts_grupo <- ifelse(data$NumOfProducts == 1, "1",
+                            ifelse(data$NumOfProducts == 2, "2", "3 o más"))
+data$NumOfProducts_grupo <- factor(data$NumOfProducts_grupo,
+                                   levels = c("1", "2", "3 o más"))
+```
+
+# Selecció
+
+Un cop imputades i analitzades les dades, tal com s’ha mencionat anteriorment, es decideix reduir el dataset centrant-se en les variables que presenten una forta relació amb la variable resposta. Tot i que anteriorment ja s’havien realitzat proves per identificar quines variables eren estadísticament significatives, les transformacions i imputacions recents poden haver modificat les distribucions i relacions originals, tot i que no ha de passar.
+
+Per aquest motiu, es tornen a aplicar els tests estadístics corresponents:
+
+- Test de mediana per a les variables numèriques
+
+- Test de Chi-quadrat per a les variables categòriques
+
+Aquesta nova avaluació garanteix que la selecció de variables sigui coherent amb el dataset final, després de totes les modificacions realitzades.
+
+```{r}
+varCat<-c("Geography", "Gender", "MaritalStatus", "EducationLevel","HasCrCard", 
+          "SavingsAccountFlag", "LoanStatus","CustomerSegment","Exited" ,"IsActiveMember","ComplaintsCount_bin", "NumOfProducts_grupo")
+varNum<-c("Age", "CreditScore", "Tenure","EstimatedSalary", "Balance","TransactionFrequency","AvgTransactionAmount","DigitalEngagementScore","NetPromoterScore")
+v<-"Exited"
+
+for (varc1 in varCat) {
+  if (varc1 != v) {
+    tab <- table(data[[v]], data[[varc1]])  # filas = Exited, columnas = categorías
+    test <- chisq.test(tab, correct = FALSE)
+    
+    cat("\nVariable:", varc1, "\n")
+    cat("Chi-squared =", round(test$statistic, 3),
+        "df =", test$parameter,
+        "p-value =", signif(test$p.value, 5), "\n")
+    
+    if (test$p.value < 0.05) cat("-> Diferencias significativas entre columnas\n")
+  }
+}
+
+resultados_mediana <- data.frame(
+  Variable = character(),
+  Mediana_Exited0 = numeric(),
+  Mediana_Exited1 = numeric(),
+  p_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (var in varNum) {
+  medianas <- tapply(data[[var]], data$Exited, median, na.rm = TRUE)
+  p_val <- wilcox.test(data[[var]] ~ data$Exited)$p.value
+  
+  resultados_mediana <- rbind(resultados_mediana, data.frame(
+    Variable = var,
+    Mediana_Exited0 = medianas["0"],
+    Mediana_Exited1 = medianas["1"],
+    p_value = p_val
+  ))
+}
+resultados_mediana
+```
+
+
+Llavors, les variables significatives son:
+
+```{r}
+resultados_significativos <- data.frame(
+  Variable = c("NumOfProducts_groupo", "Age", "Geography", "Balance", "Gender", "IsActiveMember"),
+  Clase = c("Categórica", "Numérica", "Categórica", "Numérica", "Categórica", "Categórica"),
+  p_valor = c(2.961e-118, 5.036801e-82, 6.1421e-22, 2.264889e-13, 8.746e-14, 7.5648e-18)
+)
+
+print(resultados_significativos)
+```
+
+
+
+Un cop efectuats els tests estadístics pertinents, s’ha constatat un canvi en relació amb els resultats obtinguts abans de la imputació. Les variables CreditScore i EstimateSalary han deixat de ser estadísticament significatives. Aquest resultat no és inesperat, ja que anteriorment presentaven p-valors només lleugerament inferiors a 0,05, fet que ja indicava una significació marginal.
+
+```{r}
+data_transformada <- subset(data, select = -c(ComplaintsCount, NumOfProducts))
+data_reducida<-data[,c("Geography", "Gender","Exited" ,"IsActiveMember","NumOfProducts_grupo","Age","Balance")]
+```
+
+
+

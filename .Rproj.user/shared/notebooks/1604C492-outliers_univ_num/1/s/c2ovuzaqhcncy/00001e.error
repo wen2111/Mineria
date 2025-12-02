@@ -1,1 +1,0 @@
-{"frames":[{"func":"load(here(\"DATA\", \"data2.RData\"))","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0}],"message":"Error en here(\"DATA\", \"data2.RData\"): \n  no se pudo encontrar la función \"here\"\n"}
