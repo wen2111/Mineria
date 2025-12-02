@@ -6,7 +6,8 @@ library(printr)
 library(randomForest)
 library(ranger)
 
-mydata <- data_imputado
+mydata <- data_reducida
+#######3
 mydata$CustomerSegment<-NULL
 mydata$LoanStatus<-NULL
 mydata$IsActiveMember<-NULL
@@ -14,9 +15,11 @@ mydata$Gender<-NULL
 mydata$ComplaintsCount<-NULL
 mydata$HasCrCard<-NULL
 mydata$SavingsAccountFlag<-NULL
+####
 mydata$group<-NULL
 mydata$Surname<-NULL
 mydata$ID<-NULL
+#########
 # SEPARAR TRAIN Y TEST
 train <- mydata[1:7000,]
 test <- mydata[7001:10000,]  # 3000 obs
@@ -45,13 +48,9 @@ tuneGrid <- data.frame(mtry = floor(c(mtry.class/2, mtry.class, 2*mtry.class)))
 tuneGrid
 set.seed(123)
 rf.caret <- train(Exited ~ ., data = train2,method = "rf",
-                  tuneGrid = tuneGrid,nodesize=20,maxnodes=50)
+                  tuneGrid = tuneGrid,nodesize=15,maxnodes=25)
 plot(rf.caret)
 rf.caret
-pred4 <- predict(rf.caret, newdata = test2)
-ptrain <- predict(rf.caret, train2, type = 'raw')
-confusionMatrix(ptrain, train2$Exited, positive="Yes")
-confusionMatrix(pred4, test2$Exited, positive="Yes")
 
 p4 <- predict(rf.caret, test2, type = 'prob')
 head(p4)
@@ -67,16 +66,14 @@ plot.roc(r1,print.auc=TRUE,
          auc.polygon.col="lightblue",
          print.thres=TRUE,
          main= 'ROC Curve')
-obs <- test2$Exited
-caret::postResample(pred4, obs)
 
 ptest <- predict(rf.caret, test2, type = 'prob')
 ptrain <- predict(rf.caret, train2, type = 'prob')
 
-ptrain <- ifelse(ptrain[,2] > 0.05, "Yes", "No")
+ptrain <- ifelse(ptrain[,2] > 0.1, "Yes", "No")
 ptrain <- factor(ptrain, levels = c("No", "Yes"))
 
-ptest <- ifelse(ptest[,2] > 0.05, "Yes", "No")
+ptest <- ifelse(ptest[,2] > 0.1, "Yes", "No")
 ptest <- factor(ptest, levels = c("No", "Yes"))
 
 confusionMatrix(ptrain, train2$Exited, positive="Yes")
@@ -101,12 +98,12 @@ f1 <- 2 * (precision * recall) / (precision + recall)
 f1
 
 pred_kaggle_prob <- predict(final_rf1, newdata = test, type = "prob")
-pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.1, "Yes", "No")
+pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.01, "Yes", "No")
 
 
 test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "rf2.csv", row.names = FALSE)
+write.csv(submission, "rf4.csv", row.names = FALSE)
 
 ##################### 2
 
@@ -116,7 +113,7 @@ ctrl_rf <- trainControl(
   classProbs = TRUE,     # necesario para AUC
   summaryFunction = twoClassSummary,
   sampling = "smote",    # balanceo automático
-  verboseIter = FALSE,
+  verboseIter = FALSE
 )
 
 mtry.class <- sqrt(ncol(train2) - 1)
@@ -132,16 +129,12 @@ fit_rf <- train(
   trControl = ctrl_rf,
   tuneGrid = tuneGrid,
   ntree = 500,        # número de árboles
-  nodesize=30, maxnodes=50
-  
-)
+  nodesize=15, maxnodes=25,
+  preProcess = c("center", "scale") # no modifica nada las metricas
+  )
 
 plot(fit_rf)
 fit_rf
-pred <- predict(fit_rf, newdata = test2,type = 'raw')
-ptrain <- predict(fit_rf, newdata=train2, type = 'raw')
-confusionMatrix(ptrain, train2$Exited, positive="Yes")
-confusionMatrix(pred, test2$Exited, positive="Yes")
 pred <- predict(fit_rf, newdata = test2,type = 'prob')
 pred <- pred[,2]
 r <- multiclass.roc(test2$Exited, pred, percent = TRUE)
@@ -155,6 +148,7 @@ plot.roc(r1,print.auc=TRUE,
          auc.polygon.col="lightblue",
          print.thres=TRUE,
          main= 'ROC Curve')
+
 obs <- test2$Exited
 caret::postResample(pred4, obs)
 
@@ -174,3 +168,10 @@ precision <- cm$byClass["Precision"]     # TP / (TP + FP)
 recall <- cm$byClass["Sensitivity"]      # TP / (TP + FN)
 f1 <- 2 * (precision * recall) / (precision + recall)
 f1
+
+# peores resultados con los predictores del grafico del varImp.
+# la prediccion de los YES similar, pero predice pero los casos NO.
+
+# con el balanceo
+## mejor sensibilidad con el dataset reducido
+## el f1 baja levemente

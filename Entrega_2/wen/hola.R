@@ -75,8 +75,6 @@ calcular_f1 <- function(conf){
 pred_logit_test2  <- predict(modelo_logit,  newdata = test2, type = "response")
 pred_probit_test2 <- predict(modelo_probit, newdata = test2, type = "response")
 
-library(caret)
-
 mejor_umbral_f1 <- function(prob, real){
   
   real <- as.factor(real)
@@ -113,15 +111,22 @@ class_probit_test2 <- ifelse(pred_probit_test2 > 0.4, 1, 0)
 # Convertir predicción binaria a "No"/"Yes"
 class_logit_test2_factor <- ifelse(class_logit_test2 == 1, "Yes", "No")
 class_logit_test2_factor <- factor(class_logit_test2_factor,
-                                   levels = c("No", "Yes"))
+                                   levels = c("0","1"),
+                                   labels = c("No","Yes"))
 
-test2$Exited <- factor(test2$Exited, 
-                                   levels = c("No", "Yes"))
+class_probit_test2_factor <- ifelse(class_probit_test2 == 1, "Yes", "No")
+class_probit_test2_factor <- factor(class_logit_test2_factor,
+                                    levels = c("0","1"),
+                                    labels = c("No","Yes"))
+
+test2$Exited <-factor(test2$Exited,
+                      levels = c("0","1"),
+                      labels = c("No","Yes"))
 
 # Ahora sí funciona
 z <- confusionMatrix(class_logit_test2_factor, test2$Exited, positive = "Yes")
 
-a<-confusionMatrix(class_probit_test2, test2$Exited,positive = "Yes")
+a <- confusionMatrix(class_probit_test2, test2$Exited,positive = "Yes")
 
 # --- F1 de test2
 f1_logit_test2  <- calcular_f1(z)
