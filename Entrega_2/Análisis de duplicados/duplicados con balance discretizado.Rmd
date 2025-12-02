@@ -1,6 +1,8 @@
 ---
 title: "Pruebas duplicados"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 date: "2025-12-02"
 ---
 
@@ -65,5 +67,49 @@ freq_dup_train <- train_df %>%
   ) %>%
     arrange(desc(n), desc(n_0))
 freq_dup_train
+```
+
+
+
+# Imputación de coincidencias perfectas
+
+```{r}
+library(dplyr)
+
+MIN_N <- 6
+# Identificar combinaciones perfectamente predictivas de Exited = 0 con soporte mínimo
+perfect_combinations <- freq_dup_train %>%
+  filter(prop_0 == 1, n >= MIN_N) %>%
+  select(all_of(feature_cols))
+# Convertir columnas a caracter para la comparacion
+perfect_combinations_clean <- perfect_combinations %>%
+  mutate(across(all_of(feature_cols), as.character))
+
+# poner todas como caracte para que coincidan con las combinaciones de antes, excepto exited
+test_df_cleaned <- test_df %>%
+  mutate(across(all_of(feature_cols), as.character),
+         Exited = as.numeric(as.character(Exited))) 
+
+# Unir el data frame de prueba con las combinaciones perfectas e imputar Exited = 0 en caso de coincidencia
+test_df_imputed <- test_df_cleaned %>%
+  left_join(
+    perfect_combinations_clean %>% mutate(match_found = TRUE),
+    by = feature_cols
+  ) %>%
+  mutate(
+    Exited = if_else(
+      match_found == TRUE,
+      0,
+      Exited
+    )
+  ) %>%
+  select(-match_found)
+# Crear el data frame final añadiendo la columna Exited imputada al data frame original
+test_df_final <- test_df %>%
+  mutate(Exited = test_df_imputed$Exited)
+```
+
+```{r}
+summary(test_df_final)
 ```
 
