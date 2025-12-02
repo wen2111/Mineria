@@ -1,0 +1,86 @@
+---
+title: "Boosting try"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-12-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+```
+
+```{r}
+train_df <- data_reducida[data_reducida$group == "train", ]
+test_df  <- data_reducida[data_reducida$group == "test", ]
+```
+duplicados:
+```{r}
+dup_completos_train <- train_df[
+  duplicated(train_df) |
+  duplicated(train_df, fromLast = TRUE),
+]
+
+nrow(dup_completos_train)
+
+```
+
+duplicados sin exited ni group:
+```{r, echo=FALSE}
+library(dplyr)
+
+feature_cols <- setdiff(names(train_df), c("Exited", "group"))
+
+dup_features_train <- train_df[
+  duplicated(train_df[, feature_cols]) |
+  duplicated(train_df[, feature_cols], fromLast = TRUE),
+]
+
+nrow(dup_features_train)
+
+```
+Hay filas idénticas con distinto Exited?
+```{r, echo=FALSE}
+conflictos_train <- dup_features_train %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n = n(),
+    exited_values = n_distinct(Exited),
+    .groups = "drop"
+  ) %>%
+  filter(exited_values > 1)
+
+nrow(conflictos_train)
+```
+
+Qué valores de Exited tienen los duplicados?
+```{r}
+table(dup_completos_train$Exited)
+prop.table(table(dup_completos_train$Exited))
+```
+Contra la proporcion total:
+```{r}
+table(train_df$Exited)
+prop.table(table(train_df$Exited))
+```
+Cuáles son los duplicados más frecuentes en train:
+```{r, echo=FALSE}
+freq_dup_train <- train_df %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n      = n(),
+    n_0    = sum(Exited == 0),
+    n_1    = sum(Exited == 1),
+    prop_0 = mean(Exited == 0),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n))
+freq_dup_train
+```
+
+
+
