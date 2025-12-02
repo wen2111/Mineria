@@ -1,6 +1,6 @@
 ---
 title: "imput na"
-author: "Grupo 5"
+author: "Laura Belmonte"
 date: "2025-10-12"
 output: html_document
 ---
@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r,echo=FALSE, warning=FALSE, message=FALSE}
-load("~/GitHub/Mineria/DATA/data.RData")
+load("~/Documents/GitHub/Mineria/DATA/data.RData")
 library(naniar)
 library(ggplot2)
 library(visdat)
@@ -390,11 +390,84 @@ mass_before_after <- function(before, after, max_categories = 10) {
 }
 ```
 
-#KNN
+## Multiple chained Equations (MICE)
 
-A continuación probaremos el método KNN para la imputación de NA para las variables categóricas:
+Para la implementación práctica de la imputación múltiple, se utilizó el paquete MICE.
+Este método permite generar múltiples datasets completos mediante modelos estadísticos iterativos, manejando tanto variables numéricas como categóricas de manera eficiente.
+
+A continuación, realizamos la imputación de los valores faltantes para las variables numéricas de manera multivariada (utilizando la información de todas las variables numéricas)
 ```{r}
-data4knn<-data
+
+library(mice)
+datamice<-data
+
+variables_numericas <- names(datamice)[sapply(datamice, is.numeric)]
+
+
+variables_no_imputar <- c("ID", "Exited")
+
+variables_numericas_imputar <- setdiff(variables_numericas, variables_no_imputar)
+
+datamice_imputado <- datamice
+
+metodos <- make.method(datamice_imputado)
+
+metodos[variables_numericas_imputar] <- "pmm"  # Predictive Mean Matching
+metodos[variables_dicotomicas_imputar] <- "logit"
+metodos[variables_politomicas_imputar] <- "poly"
+for(var in names(metodos)) {
+  if(!var %in% variables_numericas_imputar) {
+    metodos[var] <- ""
+  }
+}
+
+pred_mat <- make.predictorMatrix(datamice_imputado)
+
+# Configurar qué variables pueden predecir y ser predecidas
+for (var in names(datamice_imputado)) {
+  if (var %in% variables_numericas_imputar) {
+    # Esta variable numérica puede ser predicha por otras numéricas imputables
+    pred_mat[var, variables_numericas_imputar] <- 1
+    pred_mat[var, var] <- 0  # No usar la variable misma para predecirse
+  }
+  # Para excluir ID y exited de las predictoras y de las imputadas
+  if (var %in% variables_no_imputar | !var %in% variables_numericas) {
+    pred_mat[var, ] <- 0  # No usar esta variable para predecir otras
+    pred_mat[, var] <- 0  # No usar otras variables para predecir esta
+  }
+}
+
+# Realizar la imputación MICE
+imputacion <- mice(
+  datamice_imputado,
+  m = 5,                    
+  maxit = 10,               
+  method = metodos,
+  predictorMatrix = pred_mat,
+  seed = 123,               
+  printFlag = TRUE          
+)
+
+datamice_completo <- complete(imputacion, 1)
+
+datamice_final <- datamice
+datamice_final[variables_numericas_imputar] <- datamice_completo[variables_numericas_imputar]
+vis_dat(datamice_final)
+```
+
+
+
+```{r}
+density_before_after(data, datamice_final)
+
+```
+
+###COMENTAR GRÁFICO###
+
+
+## Imputación multivariante categórica: KNN
+```{r}
+data4knn<-datamice_final
 library(cluster)
 k <- 5
 variables_excluir <- c("ID", "Surname", "Exited")
@@ -469,116 +542,6 @@ vis_dat(data4knn_final2)
 colSums(is.na(data4knn_final2))
 mass_before_after(data, data4knn_final2)
 ```
-
-Pese a haber solucionado la problemática de los NA, vemos como el ajuste no termina de ser el mejor para la variable Geography, donde hay un desajuste de un 10-15% para la categoría France, que se confunde con las otras dos categorías. Esto podría ser muy perjudicial de cara a una futura modelización, por lo que no podemos validar este método para nuestro caso.
-
-## Multiple chained Equations (MICE)
-
-Para la implementación práctica de la imputación múltiple, se utilizó el paquete MICE.
-Este método permite generar múltiples datasets completos mediante modelos estadísticos iterativos, manejando tanto variables numéricas como categóricas de manera eficiente.
-
-A continuación, realizamos la imputación de los valores faltantes para las variables numéricas de manera multivariada (utilizando la información de todas las variables numéricas)
-```{r}
-
-library(mice)
-library(VIM)  # Para visualizar los datos imputados
-
-datamice <- data
-
-# Identificar tipos de variables
-variables_numericas <- names(datamice)[sapply(datamice, is.numeric)]
-variables_dicotomicas <- names(datamice)[sapply(datamice, function(x) is.factor(x) && nlevels(x) == 2)]
-variables_polinomicas <- names(datamice)[sapply(datamice, function(x) is.factor(x) && nlevels(x) > 2)]
-
-# Variables que no se deben imputar
-variables_no_imputar <- c("ID", "Exited")
-
-# Variables a imputar
-variables_numericas_imputar <- setdiff(variables_numericas, variables_no_imputar)
-variables_dico_imputar <- setdiff(variables_dicotomicas, variables_no_imputar)
-variables_poli_imputar <- setdiff(variables_polinomicas, variables_no_imputar)
-
-# Copia de los datos para imputar
-datamice_imputado <- datamice
-
-# Crear métodos de imputación
-metodos <- make.method(datamice_imputado)
-
-# Asignar métodos de imputación según el tipo de variable
-metodos[variables_numericas_imputar] <- "pmm"  # Predictive Mean Matching
-metodos[variables_dico_imputar] <- "logreg"    # Regresión logística para dicotómicas
-metodos[variables_poli_imputar] <- "polyreg"   # Regresión polinomial para polinómicas
-
-# Configurar la matriz de predictores
-pred_mat <- make.predictorMatrix(datamice_imputado)
-
-# Configurar qué variables pueden predecir y ser predecidas
-for (var in names(datamice_imputado)) {
-  if (var %in% variables_numericas_imputar) {
-    # Esta variable numérica puede ser predicha por otras numéricas imputables
-    pred_mat[var, variables_numericas_imputar] <- 1
-    pred_mat[var, var] <- 0  # No usar la variable misma para predecirse
-  }
-  # Para excluir ID y Exited de las predictoras y de las imputadas
-  if (var %in% variables_no_imputar | !var %in% variables_numericas) {
-    pred_mat[var, ] <- 0  # No usar esta variable para predecir otras
-    pred_mat[, var] <- 0  # No usar otras variables para predecir esta
-  }
-}
-
-# Realizar la imputación MICE
-imputacion <- mice(
-  datamice_imputado,
-  m = 5,
-  maxit = 10,
-  method = metodos,
-  predictorMatrix = pred_mat,
-  seed = 123,
-  printFlag = TRUE
-)
-
-# Completar los datos imputados
-datamice_completo <- complete(imputacion, 1)
-
-# Combinar los datos imputados con los originales
-datamice_final <- datamice
-datamice_final[variables_numericas_imputar] <- datamice_completo[variables_numericas_imputar]
-datamice_final[variables_dico_imputar] <- datamice_completo[variables_dico_imputar]
-datamice_final[variables_poli_imputar] <- datamice_completo[variables_poli_imputar]
-
-# Visualizar los datos imputados para verificar
-aggr_plot <- aggr(datamice_final, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(datamice_final), cex.axis=.7, gap=3, ylab=c("Histograma de datos faltantes","Patrón"))
-print(aggr_plot)
-vis_dat(datamice_final)
-
-```
-
-Se  muestra un análisis visual de los datos faltantes en un conjunto de datos. En el histograma de la izquierda, se puede observar el porcentaje de valores ausentes por variable: las columnas Exited, ID y Gender presentan alrededor del 20 % al 30 % de datos faltantes, como se habia comentado en apartados anteriores, además de ser variables que no se han utilizado para imputar, mientras que las demás variables no tienen valores perdidos. 
-En el gráfico de patrones a la derecha, cada fila representa una combinación específica de variables con datos faltantes (en rojo) o completos (en azul). Las barras a la derecha indican la proporción de observaciones que siguen cada patrón: por ejemplo, el patrón más común (34.1 %) no tiene datos faltantes, mientras que otros muestran combinaciones específicas de variables con valores ausentes. En conjunto, estos gráficos permiten identificar tanto la magnitud como la estructura de los datos faltantes en el dataset.
-
-Mediante el uso de `vis.data()`se muestra una visualización general del conjunto de datos después de la imputación. Cada columna representa una variable y los colores indican su tipo de dato: character, factor, integer, numeric o valores faltantes (NA). La ausencia de áreas grises indica que la imputación se ha realizado correctamente y ya no quedan valores perdidos como era deseado.
-
-```{r}
-density_before_after(data, datamice_final)
-```
-
-```{r}
-mass_before_after(data, datamice_final)
-```
-
-Finalemente se observa el conjunto de gráficos, representando las comparaciones de densidades y distribuciones entre los datos originales e imputados. En la parte superior, las gráficas de densidad muestran que las distribuciones de las variables numéricas como Age, Balance o CreditScore entre otras son muy similares en el antes y después de la imputación, lo cual indica que el método empleado preservó la forma y tendencia original de los datos, acceptando este modelo de imputación como el correcto en el caso del variables numericas. 
-
-En la parte inferior, los gràficos gráficas de barras representan la comparación de las variables categóricas, donde se puede distinguir una correspondencia cercana entre las proporciones originales e imputadas, dando evidencia  que el proceso no distorsionó significativamente las categorías existentes.Confirmando así que la imputación fue adecuada y mantuvo la integridad estadística del conjunto de datos.
-
-En conclusión los resultados son muy buenos tanto para las variables numéricas como para las categóricas: las distribuciones se mantienen muy fieles a las existentes antes de la imputación. Además, todos los NA han sido removidos (solamente quedan los de las variables Surname e ID, que no se pueden imputar y no tienen valor predictivo, además de Exited para el grupo test).
-
-Así pues, se guarda la base de datos final para ser utilizado en pasos por venir. 
-```{r}
-data_imputado<-datamice_final
-rm(list = setdiff(ls(), "data_imputado"))
-save(data_imputado, file = "data_imputado.RData")
-```
-
 
 
 

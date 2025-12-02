@@ -1,0 +1,115 @@
+---
+title: "Pruebas duplicados"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-12-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(dplyr)
+```
+
+```{r}
+hist(data_reducida$Balance)
+```
+A continuación se hará la prueba de buscar valores duplicados discretizando la variable Balance
+```{r}
+cortes <- c(-Inf, 0, 30000, 60000, 90000, 120000, 150000, 180000, 210000, 240000, Inf) 
+etiquetas <- c("Cero", "0-30k", "30k-60k", "60k-90k", "90k-120k", "120k-150k", 
+                      "150k-180k", "180k-210k", "210k-240k", ">240k")
+data_reducida$Balance<- cut(
+    data_reducida$Balance, 
+    breaks = cortes, 
+    labels = etiquetas, 
+    right = TRUE, 
+    include.lowest = TRUE
+)
+```
+
+```{r}
+train_df <- data_reducida[data_reducida$group == "train", ]
+test_df  <- data_reducida[data_reducida$group == "test", ]
+```
+
+Conteo duplicados
+```{r}
+feature_cols <- setdiff(names(train_df), c("Exited", "group"))
+
+dup_completos_train <- train_df[
+  duplicated(train_df) |
+  duplicated(train_df, fromLast = TRUE),
+]
+
+nrow(dup_completos_train)
+```
+
+Número idéntico
+```{r}
+table(dup_completos_train$Exited)
+prop.table(table(dup_completos_train$Exited))
+```
+Duplicados más frecuentes en train:
+```{r}
+freq_dup_train <- train_df %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n      = n(),
+    n_0    = sum(Exited == 0),
+    n_1    = sum(Exited == 1),
+    prop_0 = mean(Exited == 0),
+    .groups = "drop"
+  ) %>%
+    arrange(desc(n), desc(n_0))
+freq_dup_train
+```
+
+
+
+# Imputación de coincidencias perfectas
+
+```{r}
+library(dplyr)
+
+MIN_N <- 6
+# Identificar combinaciones perfectamente predictivas de Exited = 0 con soporte mínimo
+perfect_combinations <- freq_dup_train %>%
+  filter(prop_0 == 1, n >= MIN_N) %>%
+  select(all_of(feature_cols))
+# Convertir columnas a caracter para la comparacion
+perfect_combinations_clean <- perfect_combinations %>%
+  mutate(across(all_of(feature_cols), as.character))
+
+# poner todas como caracte para que coincidan con las combinaciones de antes, excepto exited
+test_df_cleaned <- test_df %>%
+  mutate(across(all_of(feature_cols), as.character),
+         Exited = as.numeric(as.character(Exited))) 
+
+# Unir el data frame de prueba con las combinaciones perfectas e imputar Exited = 0 en caso de coincidencia
+test_df_imputed <- test_df_cleaned %>%
+  left_join(
+    perfect_combinations_clean %>% mutate(match_found = TRUE),
+    by = feature_cols
+  ) %>%
+  mutate(
+    Exited = if_else(
+      match_found == TRUE,
+      0,
+      Exited
+    )
+  ) %>%
+  select(-match_found)
+# Crear el data frame final añadiendo la columna Exited imputada al data frame original
+test_df_final <- test_df %>%
+  mutate(Exited = test_df_imputed$Exited)
+```
+
+```{r}
+summary(test_df_final)
+```
+
