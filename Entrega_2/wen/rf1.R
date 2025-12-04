@@ -6,7 +6,7 @@ library(printr)
 library(randomForest)
 library(ranger)
 
-mydata <- data_imputado
+mydata <- data_reducida
 #######3
 mydata$CustomerSegment<-NULL
 mydata$LoanStatus<-NULL
@@ -70,25 +70,51 @@ plot.roc(r1,print.auc=TRUE,
 ptest <- predict(rf.caret, test2, type = 'prob')
 ptrain <- predict(rf.caret, train2, type = 'prob')
 
-ptrain <- ifelse(ptrain[,2] > 0.1, "Yes", "No")
+ptrain <- ifelse(ptrain[,2] > 0.08696, "Yes", "No")
 ptrain <- factor(ptrain, levels = c("No", "Yes"))
 
-ptest <- ifelse(ptest[,2] > 0.1, "Yes", "No")
+ptest <- ifelse(ptest[,2] > 0.08696, "Yes", "No")
 ptest <- factor(ptest, levels = c("No", "Yes"))
 
-confusionMatrix(ptrain, train2$Exited, positive="Yes")
-cm<-confusionMatrix(ptest, test2$Exited, positive="Yes")
-cm
-precision <- cm$byClass["Precision"]     # TP / (TP + FP)
-recall <- cm$byClass["Sensitivity"]      # TP / (TP + FN)
-f1 <- 2 * (precision * recall) / (precision + recall)
-f1
+conf_train<-confusionMatrix(ptrain, train2$Exited, positive="Yes")
+conf_test<-confusionMatrix(ptest, test2$Exited, positive="Yes")
+conf_test
+# F1-score function
+f1_score <- function(cm){
+  precision <- cm$byClass["Precision"]
+  recall    <- cm$byClass["Sensitivity"]
+  f1 <- 2 * (precision * recall) / (precision + recall)
+  return(as.numeric(f1))
+}
+
+
+f1_train <- f1_score(conf_train)
+f1_test  <- f1_score(conf_test)
+
+
+kpis <- data.frame(
+  Dataset = c("Train2", "Test2"),
+  Error_rate = c(1 - conf_train$overall["Accuracy"],
+                 1 - conf_test$overall["Accuracy"]),
+  Accuracy = c(conf_train$overall["Accuracy"],
+               conf_test$overall["Accuracy"]),
+  Precision = c(conf_train$byClass["Pos Pred Value"],
+                conf_test$byClass["Pos Pred Value"]),
+  Recall_Sensitivity = c(conf_train$byClass["Sensitivity"],
+                         conf_test$byClass["Sensitivity"]),
+  Specificity = c(conf_train$byClass["Specificity"],
+                  conf_test$byClass["Specificity"]),
+  F1_Score = c(f1_train, f1_test)
+)
+
+kpis
 
 ######### ok
-final_rf1 <- train(Exited ~ ., data = train,method = "rf",tuneGrid = tuneGrid)
+final_rf1 <- train(Exited ~ ., data = train,method = "rf",tuneGrid = tuneGrid,
+                   nodesize=15,maxnodes=25)
 
 ptrain <- predict(final_rf1, train, type = 'prob')
-ptrain <- ifelse(ptrain[,2] > 0.1, "Yes", "No")
+ptrain <- ifelse(ptrain[,2] > 0.06079, "Yes", "No")
 ptrain <- factor(ptrain, levels = c("No", "Yes"))
 cm<-confusionMatrix(ptrain, train$Exited, positive="Yes")
 cm
@@ -98,12 +124,12 @@ f1 <- 2 * (precision * recall) / (precision + recall)
 f1
 
 pred_kaggle_prob <- predict(final_rf1, newdata = test, type = "prob")
-pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.01, "Yes", "No")
+pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.06079, "Yes", "No")
 
 
 test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "rf4.csv", row.names = FALSE)
+write.csv(submission, "rf_imput.csv", row.names = FALSE)
 
 ##################### 2
 
@@ -112,7 +138,6 @@ ctrl_rf <- trainControl(
   number = 8,
   classProbs = TRUE,     # necesario para AUC
   summaryFunction = twoClassSummary,
-  sampling = "smote",    # balanceo automático
   verboseIter = FALSE
 )
 
@@ -155,20 +180,34 @@ caret::postResample(pred4, obs)
 ptest <- predict(fit_rf, test2, type = 'prob')
 ptrain <- predict(fit_rf, train2, type = 'prob')
 
-ptrain <- ifelse(ptrain[,2] > 0.15, "Yes", "No")
+ptrain <- ifelse(ptrain[,2] > 0.03499, "Yes", "No")
 ptrain <- factor(ptrain, levels = c("No", "Yes"))
 
-ptest <- ifelse(ptest[,2] > 0.15, "Yes", "No")
+ptest <- ifelse(ptest[,2] > 0.03499, "Yes", "No")
 ptest <- factor(ptest, levels = c("No", "Yes"))
 
-confusionMatrix(ptrain, train2$Exited, positive="Yes")
-(cm<-confusionMatrix(ptest, test2$Exited, positive="Yes"))
+conf_train<-confusionMatrix(ptrain, train2$Exited, positive="Yes")
+(conf_test<-confusionMatrix(ptest, test2$Exited, positive="Yes"))
 
-precision <- cm$byClass["Precision"]     # TP / (TP + FP)
-recall <- cm$byClass["Sensitivity"]      # TP / (TP + FN)
-f1 <- 2 * (precision * recall) / (precision + recall)
-f1
+f1_train <- f1_score(conf_train)
+f1_test  <- f1_score(conf_test)
 
+
+kpis <- data.frame(
+  Dataset = c("Train2", "Test2"),
+  Error_rate = c(1 - conf_train$overall["Accuracy"],
+                 1 - conf_test$overall["Accuracy"]),
+  Accuracy = c(conf_train$overall["Accuracy"],
+               conf_test$overall["Accuracy"]),
+  Precision = c(conf_train$byClass["Pos Pred Value"],
+                conf_test$byClass["Pos Pred Value"]),
+  Recall_Sensitivity = c(conf_train$byClass["Sensitivity"],
+                         conf_test$byClass["Sensitivity"]),
+  Specificity = c(conf_train$byClass["Specificity"],
+                  conf_test$byClass["Specificity"]),
+  F1_Score = c(f1_train, f1_test)
+)
+kpis
 # peores resultados con los predictores del grafico del varImp.
 # la prediccion de los YES similar, pero predice pero los casos NO.
 

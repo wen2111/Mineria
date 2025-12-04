@@ -1,10 +1,41 @@
-#xgboost
 
+library(fastDummies)
+
+# Convertir todas las variables categóricas en dummies, excepto la variable respuesta
+mydata_dummies <- dummy_cols(
+  mydata,
+  select_columns = c("Gender", "EducationLevel", "LoanStatus", "Geography",
+                     "HasCrCard", "IsActiveMember", "CustomerSegment",
+                     "MaritalStatus", "SavingsAccountFlag"),
+  remove_first_dummy = TRUE,   # Para evitar multicolinealidad
+  remove_selected_columns = TRUE  # Para eliminar las columnas originales
+)
+
+# Exited queda como la variable respuesta
+mydata<-mydata_dummies
+# FAMD
+
+train_famd <- FAMD(train[, !names(train) %in% "Exited"],ncp = 25,
+                   graph = FALSE)
+train_famd_coord <- as.data.frame(train_famd$ind$coord)
+train_famd_coord$Exited <- train$Exited
+
+test_famd <- FAMD(test[, !names(test) %in% "Exited"],ncp=25,
+                  graph = FALSE)
+test_famd_coord <- as.data.frame(test_famd$ind$coord)
+test_famd_coord$Exited <- test$Exited
+
+train<-train_famd_coord
+test<-test_famd_coord
+########################################################################
+#xgboost
 library(caret)
+library(FactoMineR)  
 
 mydata <- data_reducida
 mydata$group<-NULL
-#dummifico
+
+#dummifico data reducido
 x<-mydata[,-3] #quito la respuesta
 x<-x[,1:4] # cojo solo las cat
 x <- fastDummies::dummy_cols(x, 
@@ -31,18 +62,6 @@ index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
 
-ctrl_boot_auc <- trainControl(method = "cv", 
-                              number = 5 ,         
-                              classProbs = TRUE,
-                              summaryFunction = f1_recall_summary, sampling = "up"
-                              )
-#library(smotefamily)
-#train2_bal <- SMOTE(train2[,-9],train2$Exited,K=5,dup_size = 1)
-#train2<-train2_bal$data
-#names(train2)[9]<-"Exited"
-#train2$Exited <- factor(train2$Exited, 
-#                        levels = c("No", "Yes"))
-
 library(MLmetrics)
 
 f1_recall_summary <- function(data, lev = NULL, model = NULL) {
@@ -52,41 +71,26 @@ f1_recall_summary <- function(data, lev = NULL, model = NULL) {
   c(F1 = f1, Recall = recall, Precision = precision)
 }
 
+ctrl_boot_auc <- trainControl(method = "cv", 
+                              number = 5 ,         
+                              classProbs = TRUE,
+                              summaryFunction = f1_recall_summary
+                              #, sampling = "up"
+)
 
 fit_boot_auc <- train(Exited ~ ., data=train2, 
                       method = "xgbTree",
                       trControl = ctrl_boot_auc, metric = "F1",
                       preProcess = c("scale"),verbosity = 0
 )
-fit_boot_auc$results$F1
-fit_boot_auc$bestTune
+
+#fit_boot_auc$results$F1
 # Predicciones probabilísticas
 train_pred_prob <- predict(fit_boot_auc, newdata = train2, type = "prob")
 test_pred_prob  <- predict(fit_boot_auc, newdata = test2,  type = "prob")
 
-# Threshold óptimo
-library(PRROC)
-
-probs <- test_pred_prob$Yes
-labels <- ifelse(test2$Exited == "Yes", 1, 0)
-
-thresholds <- seq(0,1,0.01)
-f1_values <- sapply(thresholds, function(th){
-  pred <- ifelse(probs > th, 1, 0)
-  TP <- sum(pred==1 & labels==1)
-  FP <- sum(pred==1 & labels==0)
-  FN <- sum(pred==0 & labels==1)
-  precision <- TP / (TP + FP)
-  recall <- TP / (TP + FN)
-  2*((precision*recall)/(precision+recall))
-})
-
-best_th <- thresholds[which.max(f1_values)]
-best_th
-
-# si prob > threshold → Yes
-train_pred_cut <- ifelse(train_pred_prob$Yes > best_th, "Yes", "No")
-test_pred_cut  <- ifelse(test_pred_prob$Yes > best_th, "Yes", "No")
+train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
+test_pred_cut  <- ifelse(test_pred_prob$Yes > 0.2071429, "Yes", "No")
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
 test_pred_cut  <- factor(test_pred_cut,  levels = c("No","Yes"))
@@ -102,6 +106,7 @@ f1_score <- function(cm){
   f1 <- 2 * (precision * recall) / (precision + recall)
   return(as.numeric(f1))
 }
+
 
 f1_train <- f1_score(conf_train)
 f1_test  <- f1_score(conf_test)
@@ -128,14 +133,15 @@ kpis
 set.seed(123)
 fit_final_glm <- train(Exited ~ ., data=train, 
                        method = "xgbTree",
-                       trControl = ctrl_boot_auc, metric = "ROC",
+                       trControl = ctrl_boot_auc, metric = "F1",
                        preProcess = c("scale"),verbosity = 0
 )
 
 train_pred_prob <- predict(fit_final_glm, newdata = train, type = "prob")
-train_pred_cut <- ifelse(train_pred_prob$Yes > best_th, "Yes", "No")
+train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
+
 # Matrices de confusión
 conf_train <- confusionMatrix(train_pred_cut, train$Exited,positive = "Yes")
 conf_train
@@ -143,7 +149,8 @@ f1_score(conf_train)
 
 # prediccion
 pred_kaggle_prob <- predict(fit_final_glm, newdata = test, type = "prob")
-pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > best_th, "Yes", "No")
+pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.2071429, "Yes", "No")
+pred_kaggle_class2 <- ifelse(pred_kaggle_prob$Yes > 0.205921, "Yes", "No")
 test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "xgboost.csv", row.names = FALSE)
+write.csv(submission, "xgboost2.csv", row.names = FALSE)

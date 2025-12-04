@@ -51,7 +51,7 @@ probs_test <- predict(xgb_model, test2, type = "prob")$Yes
 # Encontrar mejor threshold en test2 para F1
 thresholds <- seq(0.1, 0.9, 0.02)
 best_f1_test <- 0
-best_threshold <- 0.5
+best_threshold
 
 for(th in thresholds) {
   pred_test <- ifelse(probs_test > th, "Yes", "No")
@@ -101,3 +101,4 @@ cat("  Accuracy:", round(cm_test$overall["Accuracy"], 4), "\n")
 cat("  F1:", round(f1_test, 4), "\n")
 cat("  Recall:", round(cm_test$byClass["Sensitivity"], 4), "\n")
 cat("  Precision:", round(cm_test$byClass["Precision"], 4), "\n\n")
+
