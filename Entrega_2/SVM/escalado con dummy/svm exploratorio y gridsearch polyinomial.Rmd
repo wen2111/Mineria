@@ -1,0 +1,233 @@
+---
+title: "scaled SVM"
+output: pdf_document
+date: "2025-12-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(recipes)
+library(e1071)
+library(mlbench)
+library(ggplot2)
+library(ISLR)
+library(caret)
+library(pROC)
+library(dplyr)
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+bd<-data_reducida
+
+```
+# Escalado y dummyficado
+
+```{r}
+rec <- recipe(Exited ~ ., data = bd) %>%
+  step_dummy(all_nominal_predictors(), -group, one_hot = TRUE, keep_original_cols = FALSE)%>%
+  step_center(all_numeric_predictors()) %>%
+  step_scale(all_numeric_predictors())
+bd<- prep(rec) %>% bake(new_data = NULL)
+
+
+```
+
+# Train y test
+
+```{r}
+trainbase<-bd[bd$group=="train",]
+trainbase$group<-NULL
+testbase<-bd[bd$group=="test",]
+testbase$group<-NULL
+ind <- sample(1:nrow(trainbase), 0.7*nrow(trainbase))
+train <- trainbase[ind,]
+test <- trainbase[-ind,]
+```
+
+# Encontrar el mejor kernel
+
+## KPI orientatius pels diferents kernels amb paràmetres fixats
+
+```{r}
+library(e1071)
+library(caret)
+library(pROC)
+library(dplyr)
+
+threshold <- 0.20
+evaluar_kernel <- function(
+    kernel_name, 
+    cost_val = 10, 
+    gamma_val = 0.1, 
+    degree_val = 3, 
+    coef0_val = 0.0, 
+    train_data, 
+    test_data
+) {
+    svm.model <- svm(
+        Exited ~ ., 
+        data = train_data, 
+        cost = cost_val, 
+        kernel = kernel_name,
+        gamma = gamma_val, 
+        degree = degree_val,
+        coef0 = coef0_val,
+        probability = TRUE 
+    )
+    svm.pred_prob_matrix <- predict(
+        svm.model, 
+        test_data, 
+        probability = TRUE
+    )
+    svm.pred_prob <- attr(svm.pred_prob_matrix, "probabilities")[, "1"]
+    svm.pred_class <- ifelse(svm.pred_prob >= threshold, "1", "0")
+
+    cm <- confusionMatrix(
+        as.factor(svm.pred_class), 
+        as.factor(test_data$Exited), 
+        positive = "1"
+    )
+
+    roc_obj <- roc(test_data$Exited, svm.pred_prob, quiet = TRUE)
+    auc_val <- auc(roc_obj)
+
+    return(data.frame(
+        Kernel = kernel_name,
+        Accuracy = cm$overall["Accuracy"], 
+        Precision = cm$byClass["Precision"], 
+        Recall = cm$byClass["Recall"], 
+        Specificity = cm$byClass["Specificity"], 
+        F1_Score = cm$byClass["F1"], 
+        AUC = auc_val
+    ))
+}
+
+kernels_a_probar <- c("linear", "polynomial", "radial", "sigmoid")
+cost_val <- 10
+gamma_val <- 0.1 
+degree_val <- 3   
+coef0_val <- 0.0  
+
+resultados_kernels <- lapply(kernels_a_probar, function(k) {
+    evaluar_kernel(
+        kernel_name = k,
+        cost_val = cost_val,
+        gamma_val = gamma_val,
+        degree_val = degree_val,
+        coef0_val = coef0_val,
+        train_data = train,
+        test_data = test
+    )
+})
+resultados_finales <- do.call(rbind, resultados_kernels) %>%
+    mutate(across(where(is.numeric), ~ round(., 4))) %>%
+    select(Kernel, F1_Score, Recall, Precision, Accuracy, Specificity, AUC) %>% 
+    arrange(desc(F1_Score)) 
+print(resultados_finales)
+```
+Los Kernel Polynomial y radial son los que mejor resultado han dado, y por tanto a los que aplicaremos una gridsearch para tratar de encontrar los parámetros que mejores resultados den para nuestro modelo de clasificación. También probaremos el sigmoide.
+
+# Grid search: Kernel polinomial
+
+```{r}
+svm_cv <- tune(
+  "svm",
+  Exited ~ .,
+  data = train,
+  kernel = "polynomial",
+  ranges = list(
+    cost = 5,
+    degree = 5,
+    gamma = c(0.01, 0.1, 1),
+    coef0 = c(0, 1)
+  ),
+  tunecontrol = tune.control(),
+  cross = 10,
+  maxit = 100000
+)
+
+
+summary(svm_cv)
+ggplot(data = svm_cv$performances, 
+       aes(x = cost, y = error, color = as.factor(degree), group = degree)) +
+  geom_line() +
+  geom_point(size = 2) +
+  facet_grid(gamma ~ coef0, labeller = label_both) +  # gamma en filas, coef0 en columnas
+  labs(
+    title = "Error de clasificación vs C y degree (kernel polinomial)",
+    x = "Cost (C)",
+    y = "Error de clasificación",
+    color = "Degree"
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+```
+Al gràfic es pot veure com un cost de 5 i un kernel polinomial de 5 graus donen els millors resultats en termes d'error
+
+
+
+```{r}
+best_cost <- 5
+best_degree <- 5
+modelo_svm_tuned <- svm(
+    Exited ~ ., 
+    data = train, 
+    cost = best_cost, 
+    kernel = "polynomial", 
+    degree = best_degree,
+    probability = TRUE 
+)
+svm.pred_prob_matrix <- predict(modelo_svm_tuned, test, probability = TRUE)
+svm.pred_prob <- attr(svm.pred_prob_matrix, "probabilities")[, "1"]
+```
+Ara trobarem el millor treshold per maximitzar l'F1
+```{r}
+thresholds <- seq(0.01, 0.9, by = 0.01)
+
+f1_scores <- sapply(thresholds, function(t){
+  pred_class <- ifelse(svm.pred_prob >= t, "1", "0")
+  cm <- confusionMatrix(
+    factor(pred_class, levels = c("0","1")),
+    factor(test$Exited, levels = c("0","1")),
+    positive = "1"
+  )
+  cm$byClass["F1"]
+})
+
+best_threshold <- thresholds[which.max(f1_scores)]
+best_threshold
+
+```
+El millor threshold es 0.2
+```{r}
+threshold<-best_threshold
+svm.pred_class <- ifelse(svm.pred_prob >= best_threshold, "1", "0")
+
+cm <- confusionMatrix(
+  factor(svm.pred_class, levels = c("0","1")),
+  factor(test$Exited, levels = c("0","1")),
+  positive = "1"
+)
+
+roc_obj <- roc(test$Exited, svm.pred_prob, quiet = TRUE)
+auc_val <- auc(roc_obj)
+
+kpi_table <- data.frame(
+  KPI = c("Accuracy", "Precision", "Recall", "Specificity", "F1 Score", "AUC"),
+  Valor = round(c(
+    cm$overall["Accuracy"],
+    cm$byClass["Precision"],
+    cm$byClass["Recall"],
+    cm$byClass["Specificity"],
+    cm$byClass["F1"],
+    auc_val
+  ), 4)
+)
+
+print(kpi_table)
+```
+
+Con un F1 score de 0.39 y un recall de 0.33 no se obtienen resultados que mejoren otros modelos del proyecto.
+
