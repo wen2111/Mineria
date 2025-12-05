@@ -28,7 +28,9 @@ glm logit con scale
 da lo mismo y ademas se tarda menos. por lo tanto aplicar cv. sin scale tmb me da lo mismo.
 
 ## parece que funciona mejor el reducido solo.
+
 # con data_reducida_plus logit <- no mejora el test 
+
  Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
 1  Train2  0.2700000 0.7300000  0.400000          0.6068966   0.7621622 0.4821918
 2   Test2  0.2885714 0.7114286  0.374817          0.5885057   0.7435435 0.4579606
@@ -41,7 +43,7 @@ cloglog
 2   Test2  0.3357143 0.6642857 0.3426573          0.6758621   0.6612613 0.4547564
 
 
-XGBOOST con dummy 0.7 MEJOR SIN HACER NADA DE BALANCEO
+XGBOOST con dummy 0.7 MEJOR SIN HACER NADA DE BALANCEO p=0.29
 
  Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
 1  Train2  0.2136735 0.7863265 0.4857398          0.5369458   0.8514801 0.5100608
@@ -84,4 +86,58 @@ con up <- MAL PORQUE UN P MUY ALTO<- SUEPR RARO
 1  Train2  0.2046939 0.7953061 0.5060241          0.4965517   0.8733591 0.5012432
 2   Test2  0.2095238 0.7904762 0.4943311          0.5011494   0.8660661 0.4977169
 
+###############################################333
+xgbopots datareduido plus con p=0.2071429
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2389796 0.7610204 0.4476510          0.6571429   0.7881596 0.5325349
+2   Test2  0.2738095 0.7261905 0.3952096          0.6068966   0.7573574 0.4786945
 
+0.5108471
+data reducido
+Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2653061 0.7346939 0.4157303          0.6926108   0.7456885 0.5195861
+2   Test2  0.2957143 0.7042857 0.3769841          0.6551724   0.7171171 0.4785894
+0.5108471
+observem que tot i que el f1 es simialar, amb el data set reduit nomes obtenim un recall mes elevat.
+
+con famd<- shit
+Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2010204 0.7989796 0.5092478          0.8137931   0.7951094 0.6264695
+2   Test2  0.3128571 0.6871429 0.3487738          0.5885057   0.7129129 0.4379812
+
+con scale_pos_weigth <- SHIT
+
+Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.1500000 0.8500000 0.7447552          0.4197044   0.9624196 0.5368620
+2   Test2  0.1947619 0.8052381 0.5492424          0.3333333   0.9285285 0.4148784
+
+RANDOMFOREST data imputado con p=0.2
+
+Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.1765306 0.8234694 0.6409774          0.3359606   0.9508366 0.4408533
+2   Test2  0.1909524 0.8090476 0.5720339          0.3103448   0.9393393 0.4023845
+
+con p=media de la distrib del test=0.06218
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.1965306 0.8034694 0.5251451          0.5349754   0.8736165 0.5300146
+2   Test2  0.2228571 0.7771429 0.4642082          0.4919540   0.8516517 0.4776786
+
+con ptrain<-probar 0.06079
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.1967347 0.8032653 0.5243089          0.5418719   0.8715573 0.5329457
+2   Test2  0.2242857 0.7757143 0.4615385          0.4965517   0.8486486 0.4784053
+con la mediana <- probar
+Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.3261224 0.6738776 0.3683973          0.8039409    0.639897 0.5052632
+2   Test2  0.3857143 0.6142857 0.3119358          0.7149425    0.587988 0.4343575
+
+#data reducida con p= media del ptrain
+
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.1918367 0.8081633 0.5468165          0.4315271   0.9065637 0.4823789
+2   Test2  0.1957143 0.8042857 0.5346821          0.4252874   0.9033033 0.4737516
+
+# reducida con cv
+  Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2030612 0.7969388  0.510352          0.4857143   0.8782497 0.4977284
+2   Test2  0.2100000 0.7900000  0.492891          0.4781609   0.8714715 0.4854142
