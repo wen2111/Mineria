@@ -1,0 +1,227 @@
+---
+title: "balanced data"
+output: html_document
+date: "2025-12-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, include=FALSE}
+library(recipes)
+library(e1071)
+library(mlbench)
+library(ggplot2)
+library(ISLR)
+library(caret)
+library(pROC)
+library(dplyr)
+library(smotefamily)
+library(themis)
+library(recipes)
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+bd<-data_reducida
+bd$group<-NULL
+
+```
+# dummyficado
+
+```{r}
+dummies <- dummyVars(Exited ~ ., data = bd, fullRank = TRUE)
+
+bd_dummy <- data.frame(predict(dummies, bd))
+bd_dummy$Exited <- bd$Exited
+```
+# trainbase y testbase
+
+```{r}
+trainbase <- bd_dummy[1:7000, ]
+testbase  <- bd_dummy[7001:10000, ]
+```
+
+
+# Balanceado con SMOTE
+
+```{r}
+trainbase$Exited <- as.factor(trainbase$Exited)
+trainbase <- trainbase[, c(setdiff(names(trainbase), "Exited"), "Exited")]
+
+recipe_balance <- recipe(Exited ~ ., data = trainbase) %>%
+  step_smote(Exited, over_ratio = 0.6667)  # 40/60 = 0.6667
+
+prep_recipe <- prep(recipe_balance, training = trainbase)
+trainbase_smote <- bake(prep_recipe, new_data = NULL)
+
+prop.table(table(trainbase_smote$Exited))
+traibase<-trainbase_smote
+```
+
+
+```{r}
+ind <- sample(1:nrow(trainbase), 0.7*nrow(trainbase))
+train <- trainbase[ind,]
+test <- trainbase[-ind,]
+```
+
+# Grid search radial balanced
+
+```{r}
+svm_cv_rbf <- tune(
+  svm,
+  Exited ~ .,
+  data = train,
+  kernel = "radial",
+  ranges = list(
+    cost  = c(5, 7, 10, 12),
+    gamma = c(0.05, 0.1, 0.15)
+  ),
+  tunecontrol = tune.control(
+    sampling = "cross",
+    cross = 10,
+    best.model = TRUE,
+    performances = TRUE
+  ),
+  probability = TRUE,
+  scale = TRUE,
+  maxit = 100000
+)
+
+perf <- svm_cv_rbf$performances
+
+p1 <- ggplot(data = perf, aes(x = as.factor(gamma), y = error, 
+                              group = as.factor(cost), color = as.factor(cost))) +
+  geom_line(size = 1.2) +
+  geom_point(size = 4) +
+  labs(
+    title = "Error de clasificación en validación cruzada (10-fold)",
+    subtitle = paste("Grid Search: cost =", 
+                    paste(c(5, 7, 10, 12), collapse = ", "),
+                    "gamma =", paste(c(0.15, 0.2), collapse = ", ")),
+    x = "Gamma",
+    y = "Error de clasificación",
+    color = "Cost"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, color = "gray50"),
+    panel.grid.minor = element_blank()
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1))
+
+print(p1)
+
+
+best_cost <- 10 
+best_gamma <- 0.15 
+
+modelo_svm_rbf <- svm(
+  Exited ~ ., 
+  data = train, 
+  kernel = "radial", 
+  cost = best_cost,
+  gamma = best_gamma,
+  probability = TRUE,
+  scale = TRUE
+)
+
+svm.pred_prob_matrix <- predict(modelo_svm_rbf, test, probability = TRUE)
+svm.pred_prob <- attr(svm.pred_prob_matrix, "probabilities")[, "1"]
+
+thresholds <- seq(0.01, 0.99, by = 0.01)
+
+threshold_results <- data.frame(
+  threshold = thresholds,
+  f1_score = NA,
+  accuracy = NA,
+  precision = NA,
+  recall = NA
+)
+
+for(i in seq_along(thresholds)){
+  t <- thresholds[i]
+  pred_class <- ifelse(svm.pred_prob >= t, "1", "0")
+  cm <- confusionMatrix(
+    factor(pred_class, levels = c("0", "1")),
+    factor(test$Exited, levels = c("0", "1")),
+    positive = "1"
+  )
+  
+  threshold_results$f1_score[i] <- cm$byClass["F1"]
+  threshold_results$accuracy[i] <- cm$overall["Accuracy"]
+  threshold_results$precision[i] <- cm$byClass["Precision"]
+  threshold_results$recall[i] <- cm$byClass["Recall"]
+}
+
+best_threshold <- thresholds[which.max(threshold_results$f1_score)]
+best_f1 <- max(threshold_results$f1_score, na.rm = TRUE)
+
+
+svm.pred_class <- ifelse(svm.pred_prob >= best_threshold, "1", "0")
+cm <- confusionMatrix(
+  factor(svm.pred_class, levels = c("0", "1")),
+  factor(test$Exited, levels = c("0", "1")),
+  positive = "1"
+)
+
+roc_obj <- roc(test$Exited, svm.pred_prob, quiet = FALSE)
+auc_val <- auc(roc_obj)
+
+# Gráfico ROC
+p4 <- ggroc(roc_obj, color = "steelblue", size = 1.5) +
+  geom_abline(intercept = 1, slope = 1, linetype = "dashed", color = "gray50") +
+  geom_point(aes(x = 1 - cm$byClass["Specificity"], 
+                y = cm$byClass["Recall"]),
+            color = "red", size = 4) +
+  annotate("text", x = 0.7, y = 0.3, 
+           label = paste("AUC =", round(auc_val, 4)),
+           size = 5, color = "darkred") +
+  labs(
+    title = "Curva ROC",
+    subtitle = paste("Threshold usado:", round(best_threshold, 3)),
+    x = "1 - Especificidad (False Positive Rate)",
+    y = "Sensibilidad (True Positive Rate)"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, color = "gray50")
+  )
+
+print(p4)
+
+kpi_table <- data.frame(
+  KPI = c("Threshold óptimo", "Accuracy", "Precision", "Recall", 
+          "Specificity", "F1 Score", "AUC", "Balanced Accuracy"),
+  Valor = round(c(
+    best_threshold,
+    cm$overall["Accuracy"],
+    cm$byClass["Precision"],
+    cm$byClass["Recall"],
+    cm$byClass["Specificity"],
+    cm$byClass["F1"],
+    auc_val,
+    cm$byClass["Balanced Accuracy"]
+  ), 4),
+  Descripción = c(
+    "Threshold que maximiza el F1-score",
+    "Proporción de predicciones correctas",
+    "Proporción de verdaderos positivos entre los predichos positivos",
+    "Proporción de verdaderos positivos detectados",
+    "Proporción de verdaderos negativos detectados",
+    "Media armónica de Precision y Recall",
+    "Área bajo la curva ROC",
+    "Media de Sensibilidad y Especificidad"
+  )
+)
+
+print(kpi_table)
+```
+Accuracy 0.7562
+Precision 0.4256
+Recall 0.4603
+Specificity 0.8348
+F1 Score 0.4423
+AUC 0.6490
+Balanced Accuracy 0.6476 

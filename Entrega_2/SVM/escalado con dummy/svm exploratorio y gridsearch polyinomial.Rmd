@@ -196,11 +196,11 @@ f1_scores <- sapply(thresholds, function(t){
   cm$byClass["F1"]
 })
 
-best_threshold <- thresholds[which.max(f1_scores)]
-best_threshold
+#best_threshold <- thresholds[which.max(f1_scores)]
+best_threshold<-0.18
 
 ```
-El millor threshold es 0.2
+El millor threshold es 0.19
 ```{r}
 threshold<-best_threshold
 svm.pred_class <- ifelse(svm.pred_prob >= best_threshold, "1", "0")
@@ -229,5 +229,9 @@ kpi_table <- data.frame(
 print(kpi_table)
 ```
 
-Con un F1 score de 0.39 y un recall de 0.33 no se obtienen resultados que mejoren otros modelos del proyecto.
-
+Accuracy	Accuracy	0.3243		
+Precision	Precision	0.2139		
+Recall	Recall	0.8860		
+Specificity	Specificity	0.1834		
+F1	F1 Score	0.3446		
+AUC	0.6924	

@@ -1,5 +1,5 @@
 ---
-title: "gridsearch radial"
+title: "sigmoide grid search"
 output: html_document
 date: "2025-12-04"
 ---
@@ -7,7 +7,6 @@ date: "2025-12-04"
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
 ```{r, include=FALSE}
 library(recipes)
 library(e1071)
@@ -24,7 +23,7 @@ bd<-data_reducida
 # Escalado y dummyficado
 
 ```{r}
-set.seed
+set.seed(1234)
 rec <- recipe(Exited ~ ., data = bd) %>%
   step_dummy(all_nominal_predictors(), -group, one_hot = TRUE, keep_original_cols = FALSE)%>%
   step_center(all_numeric_predictors()) %>%
@@ -46,31 +45,34 @@ train <- trainbase[ind,]
 test <- trainbase[-ind,]
 ```
 
-#gridsearch radial
 
 ```{r}
-svm_cv_rbf <- tune(
+# Grid search para SVM con kernel sigmoide
+svm_cv_sigmoid <- tune(
   svm,
   Exited ~ .,
   data = train,
-  kernel = "radial",
+  kernel = "sigmoid",
   ranges = list(
-    cost  = c(5, 7, 10, 12),
-    gamma = c(0.15, 0.2)
+    cost  = c(0.1, 0.5, 1),
+gamma = c(0.001, 0.005, 0.01)
   ),
   tunecontrol = tune.control(),
   cross = 10,
   maxit = 100000
 )
 
-perf <- svm_cv_rbf$performances
+# Guardamos las performances
+perf_sigmoid <- svm_cv_sigmoid$performances
 
-ggplot(data = perf, aes(x = gamma, y = error, color = as.factor(cost))) +
+# Visualización
+library(ggplot2)
+ggplot(data = perf_sigmoid, aes(x = gamma, y = error, color = as.factor(cost))) +
   geom_line() +
   geom_point(size = 3) +
   scale_x_continuous(trans = "log10") +
   labs(
-    title = "Error de clasificación vs gamma y cost (SVM RBF)",
+    title = "Error de clasificación vs gamma y cost (SVM Sigmoid)",
     x = "Gamma (log scale)",
     y = "Error de clasificación",
     color = "Cost"
@@ -78,24 +80,21 @@ ggplot(data = perf, aes(x = gamma, y = error, color = as.factor(cost))) +
   theme_bw() +
   theme(legend.position = "bottom")
 
-
 ```
-Resulta evidente a la vista del gráfico que los mejores parámetros son gamma=0.2 y coste=10.
-Procedemos a generar y evaluar el modelo ganador
 ```{r}
-best_cost <- 10
-best_gamma <- 0.2
+best_cost <- 1
+best_gamma <- 0.01
 
-modelo_svm_rbf <- svm(
+modelo_svm_sigmoid <- svm(
   Exited ~ ., 
   data = train, 
-  kernel = "radial", 
+  kernel = "sigmoid", 
   cost = best_cost,
   gamma = best_gamma,
   probability = TRUE
 )
 
-svm.pred_prob_matrix <- predict(modelo_svm_rbf, test, probability = TRUE)
+svm.pred_prob_matrix <- predict(modelo_svm_sigmoid, test, probability = TRUE)
 svm.pred_prob <- attr(svm.pred_prob_matrix, "probabilities")[, "1"]
 
 thresholds <- seq(0.01, 0.9, by = 0.01)
@@ -112,9 +111,9 @@ f1_scores <- sapply(thresholds, function(t){
 
 best_threshold <- thresholds[which.max(f1_scores)]
 best_threshold
-```
-```{r}
+
 svm.pred_class <- ifelse(svm.pred_prob >= best_threshold, "1", "0")
+
 cm <- confusionMatrix(
   factor(svm.pred_class, levels = c("0","1")),
   factor(test$Exited, levels = c("0","1")),
@@ -138,11 +137,7 @@ kpi_table <- data.frame(
 
 print(kpi_table)
 ```
-F1:
-Accuracy: 0.8029
-Precision 0.5409
-Recall: 0.4607
-Specificity: 0.8949
-AUC:0.6798
 
-
+Accuracy: 0.3395
+F1: 0.3576
+Recall: 0.8853
