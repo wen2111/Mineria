@@ -1,0 +1,283 @@
+---
+title: "Association Rules"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r, include=FALSE}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(arules)
+library(dplyr)
+```
+# Adaptación de los datos
+```{r}
+data_ar <- subset(data_transformada, select = -c(group))
+data_ar <- data_ar %>%
+  filter(!is.na(Exited))
+str(data_ar)
+```
+
+
+Para poder utilizar arules será necesario transformar nuestros datos numéricos y categóricos a factor. Para los valores numéricos se hará una partición en intervalos, los categóricos pasarán a ser factor directamente.
+
+Categóricas:
+```{r}
+data_ar <- data_ar %>%
+  mutate(across(where(is.character), as.factor))
+```
+Numéricas (transformación 1 a 1 con cortes personalizados)
+```{r}
+data_ar <- data_ar %>%
+  mutate(
+    Tenure = cut(Tenure,
+                breaks = c(0, 3, 6, 10),
+                labels = c("Nuevo (0-3 años)", "Medio (4-6 años)", "Antiguo (7-10 años)"),
+                include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    NetPromoterScore = cut(NetPromoterScore,
+                          breaks = c(-1, 6, 8, 10),  # -1 para incluir el 0
+                          labels = c("0-6", "7-8", "9-10"),
+                          include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    TransactionFrequency = cut(TransactionFrequency,
+                              breaks = c(0, 20, 30, 40, max(TransactionFrequency, na.rm = TRUE)),
+                              labels = c("0-20", "21-30", "31-40", "41+"),
+                              include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    Age = cut(Age,
+             breaks = c(0, 25, 35, 45, 55, 65, 100),
+             labels = c("18-25", "26-35", "36-45", "46-55", "56-65", "65+"),
+             include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    EstimatedSalary = cut(EstimatedSalary,
+                         breaks = c(0, 30000, 60000, 90000, 120000, 150000, 180000, 
+                                   max(EstimatedSalary, na.rm = TRUE)),
+                         labels = c("0-30K", "31-60K", "61-90K", "91-120K", 
+                                  "121-150K", "151-180K", "180K+"),
+                         include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    AvgTransactionAmount = cut(AvgTransactionAmount,
+                              breaks = quantile(AvgTransactionAmount, 
+                                              probs = c(0, 0.5, 0.8, 0.95, 1), 
+                                              na.rm = TRUE),
+                              labels = c("Bajo (0-50%)", "Medio (51-80%)", 
+                                       "Alto (81-95%)", "Muy Alto (96-100%)"),
+                              include.lowest = TRUE)
+  )
+
+data_ar <- data_ar %>%
+  mutate(
+    DigitalEngagementScore = cut(DigitalEngagementScore,
+                                breaks = c(0, 25, 50, 75, 100),
+                                labels = c("0-25", "26-50", "51-75", "76-100"),
+                                include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    CreditScore = cut(CreditScore,
+                     breaks = c(300, 580, 670, 740, 800, 850),
+                     labels = c("Muy Bajo (300-579)", "Bajo (580-669)", 
+                              "Medio (670-739)", "Bueno (740-799)", 
+                              "Excelente (800-850)"),
+                     include.lowest = TRUE)
+  )
+data_ar <- data_ar %>%
+  mutate(
+    Balance = cut(Balance,
+                 breaks = c(0, 1000, 5000, 15000, 50000, Inf),
+                 labels = c("Muy Bajo (0-1K)", "Bajo (1-5K)", 
+                          "Medio (5-15K)", "Alto (15-50K)", 
+                          "Muy Alto (50K+)"),
+                 include.lowest = TRUE)
+  )
+
+str(data_ar)
+```
+Las 21 variables son factores. Puede comenzar el análisis por Association Rules.
+
+Transformación a una base de datos transaccional:
+```{r}
+data_tr <- as(data_ar,"transactions")
+data_tr
+```
+Lor registros ahora son transacciones, y las variables se han desdoblado en sus categorías, obteniendo así la estructura para la base transaccional.
+
+Un par de ejemplos de "transacciones"
+```{r}
+inspect(data_tr[1:2])
+```
+```{r}
+SIZE <- size(data_tr)
+summary(SIZE)
+```
+Todas las transacciones tienen 21 valores, por tanto la transformación se ha realizado correctamente (no hay valores faltantes).
+
+# Parametrización
+
+## Soporte mínimo
+
+El soporte mínimo es el umbral de frecuencia que debe superar un conjunto de artículos para ser considerado relevante en la minería de reglas de asociación. Garantiza que las reglas descubiertas representen patrones significativos y no ruido estadístico.
+
+Mediante una visualización se pretende obtener algo de información sobre nuestra base de datos transaccional que nos ayude a fijar un soporte mínimo adecuado.
+```{r}
+itemFrequencyPlot(data_tr, topN=100,type="absolute", cex.names = 0.6)
+```
+Normalmente, a la vista del gráfico, se establecería un soporte mínimo de 0.05 o similar dependiendo del caso de estudio. En este caso, el desbalanceo nos obliga a ser más permisivos.
+
+Se es consciente de la problemática que supone el desbalanceo para la variable exited, por lo que será necesario aplicar un soporte mínimo **extremadamente bajo**. Se ha escogido 0.0125.
+
+## Confianza
+
+Indica qué porcentaje de las veces que aparece el antecedente, también aparece el consecuente.Para nuestro caso, dado el desbalanceo, también se fijará una confianza permisiva. Se ha escogido confianza=0.6, lo que significa que cuando se da la condición del antecedente, en el 60% de los casos se cumple el consecuente.
+
+
+De este modo se ponen unos filtros laxos para detectar reglas donde el consecuente sea que el cliente se va del banco (Exited=1) dada la circunstancia del desbalanceo.
+
+# Creación conjunto de reglas a explorar
+
+## Reglas de asociación
+
+Se utilizan los parámetros establecidos y justificados en el apartado anterior con la esperanza de obtener reglas que den informacion valiosa sobre las circunstancias que llevan a un cliente a quedarse o irse del banco. Los parámetros se fijan para cualquier tipo de búsqueda en lhs o consecuente.
+
+Los itemsets a estudiar serán de longitud entre 2 y 5.
+```{r}
+itemsets <- apriori(data = data_tr,
+                    parameter = list(support = 0.0125,
+                                     minlen = 1,
+                                     maxlen = 5,
+                                     target = "frequent itemset"))
+summary(itemsets)
+```
+Se ha generado 52.000 itemsets de entre 1 y 5 items que superan el soporte mínimo. Unos 42.000 corresponden a itemsets de entre 4 y 5 items. Ojeamos los 5 itemsets más frecuentes:
+```{r}
+top_5_itemsets <- sort(itemsets, by = "support", decreasing = TRUE)[1:5]
+(inspect(top_5_itemsets))
+```
+- El 80% de los clientes no han emitido ninguna queja. 
+- Cerca del 80% de los clientes no han dejado el banco
+- Un 70% de los clientes tiene tarjeta de crédito
+- El 66% de los clientes tiene cuenta de ahorros
+- Un 64% de los clientes no han emitido ninguna queja y además se han quedado en el banco. 
+
+De los 5 itemsets más frecuentes únicamente se obtiene una información que implica más de una variable. Los clientes que no emiten quejas son propensos a quedarse en el banco.
+
+A continuación se comenzará a buscar reglas de asociación mediante itemsets de entre 2 y 5 items. 
+```{r}
+rules = apriori (data_tr, parameter = list (support=0.0125, confidence=0.5, maxlen = 5, minlen=2))
+summary(rules)
+```
+
+Se ha generado ~728.000 reglas, la mayoría (+615.000) compuestas por 4 o 5 items.
+
+## Eliminar reglas redundantes
+
+Una regla es redundante cuando una regla más corta con el mismo consecuente tiene igual o mayor confianza. Si añadir condiciones no mejora la predicción, la regla extensa sobra.
+
+Por ejemplo, si tenemos dos reglas de asociación: la regla {A} -> {C} con una confianza del 80%, y la regla {A , B} -> {C} que también tiene una confianza del 80%. En este caso, la segunda regla es redundante, ya que la adición del ítem B en el antecedente no incrementa el poder predictivo de la regla hacia el consecuente C.
+
+```{r}
+reglas_Noredund <- rules[!is.redundant(x = rules, measure = "confidence")]
+reglas_Noredund
+```
+
+El número de reglas se reduce drásticamente (ha quedado menos de 1/3 de las reglas originales). Esto es muy positivo, dado que hemos eliminado información que estaba "duplicada" o que podemos simplificar.
+
+# Detección de patrones
+
+## Patrones de abandono del banco
+
+Queremos encontrar patrones que nos demuestren qué características debe tener un cliente para las variables de la base de datos para que sea altamente probable que deje el banco, y así poder tomar medidas para que eso no suceda.
+```{r}
+filtrado_reglas <- subset(x = reglas_Noredund,
+                           subset = rhs %pin% "Exited=1")
+filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "lift")
+inspect(head(filtrado_reglas_ordenadas,10))
+```
+
+Vemos que, pese a haber fijado parámetros muy permisivos, el lift de las que han pasado el filtro es muy alto. Esto se debe al desbalanceo, que provoca que la regla se de pocas veces (partimos de solo un 20% de Exited=1), pero que proporcionalmente da una regla muy significativa.
+
+Un lift de 3 indica que un cliente con los antecedentes que especifica la regla es 3 veces más propenso a abandonar el banco que la media.
+
+Información de valor que se obtiene:
+- Un cliente que tiene 3.3 productos o más es 3 veces más propenso a abandonar el banco.
+- El hecho de que no haya emitido quejas no aumenta su probabilidad de permanencia. Al contrario: la disminuye
+- Mujeres de entre 46-55 años inactivas y con un solo producto son 3 veces más propensas a dejar el banco.
+- Clientes alemanes de entre 46-55 años con un balance de +50k en el banco y un solo producto son 3 veces más propensos a dejar el banco.
+- Clientes de entre 46-55 años, inactivos con un solo producto y sin quejas también son 2.9 veces más propensos a dejar el banco.
+
+Conclusiones/recomendaciones:
+- Prestar atención a la franja de edad de entre 46-55 años. Ver qué pasa para ese segmento de población en el mercado alemán y en las mujeres. 
+- Revisar las condiciones que ofrece el banco a clientes con 3 productos o más
+- Clientes inactivos de entre 46-55 años abandonan con facilidad el banco.
+
+## Patrones de permanencia en el banco
+
+De la misma manera que interesa saber qué patrones hacen más probable que un cliente se vaya, es muy importante saber qué se está haciendo bien. ¿Qué contenta al cliente y le hace permanecer en el banco?
+
+Se utlizan las mismas reglas encontradas con los parámetros fijados y justificados previamente.
+
+```{r}
+filtrado_reglas <- subset(x = reglas_Noredund,
+                           subset = rhs %pin% "Exited=0")
+filtrado_reglas_ordenadas <- sort(filtrado_reglas, by = "confidence")
+inspect(head(filtrado_reglas_ordenadas,10))
+```
+En este caso los lift son mas bajos, pero tiene sentido si partimos de la premisa del desbalanceo (80% de Exited es 0). De hecho, dado que el consecuente que estudiamos es ~80% de la población, el lift teórico máximo es de ~1.25 para este caso. Vemos que es prácticamente así.
+
+Algo que llama poderosamente la atención es la confianza de estas reglas, 1 o muy cercana. Esto quiere decir que cuando se da el antecedente SIEMPRE se da el consecuente (el cliente se queda en el banco). 
+
+Información de valor: 
+
+- Clientes de entre 18-35 años que tengan un índice de uso digitalde entre 76-100 y sean titulares de 2 productos es prácticamente seguro que se queden en el banco.
+- Si al hecho de pertenecer a la franja de 18-35 años y de tener dos productos se le añade una de las siguientes características, sigue siendo casi seguro que el cliente se quedará (99-100%): estar casado/a, tener tarjeta de crédito, estado de préstamos "sin préstamos" o "riesgo estándar"
+- Clientes de entre 18-25 años con un balance de <1000 en la cuenta se quedarán con un 99% de confianza.
+
+ Diversas reglas refuerzan la tesis de que clientes de entre 18-35 años, con 2 productos y casados o con solvencia para pedir préstamos es prácticamente seguro que se quedarán en el banco
+ 
+
+# Significancia de variables y conclusiones de Association Rules
+
+Se observa que todas las variables recogidas como significativas como producto de diferentes tests estadísticos aparecen en las reglas que tienen como consecuente permanecer o abandonar el banco.
+
+El número de quejas también aparece en antecedentes de reglas con Exited=1 con su categoría "0". Hay que recordar del análisis exploratorio que esta supone el 25% de los datos.
+
+Digital_Engagement_score aparece en reglas con consecuente Exited=0 que tienen una confianza de prácticamente el 100%, pero lo hacen siempre en su categoría 75-100 y acompañadas de la franja de edad 26-35. Por si sola, su significancia quedó categóricamente rechazada tras obtener un p-valor de 0.35, pero sí que puede decirse que clientes de esa franja con un uso digital alto son propensos a abandonar el banco.
+
+```{r, echo=FALSE}
+tabla_proporciones <- data_ar %>%
+  mutate(Exited_numeric = as.numeric(as.character(Exited))) %>%
+  group_by(Age, DigitalEngagementScore) %>%
+  summarise(
+    n = n(),
+    prop_Exited = mean(Exited_numeric, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(prop_Exited))
+
+print(tabla_proporciones, n = Inf)
+```
+
+Con un análisis de proporciones rápido por grupos vemos como las edades de entre 46-65 son mucho más propensas a dejar el banco que la media (0.2), y que gente de corta edad es bastante menos probable que abandone el banco. Esto concuerda con algunas de las conclusiones obtenidas.
+
+También se observa que, hasta los 35 años, si observamos el número de personas por categoría de uso digital es una franja de edad que tiene mucho uso digital.
+
+Clientes de +65 años, independientemente del uso digital, no suelen moverse de banco.
+
+Por tanto se validan las variables escogidas previamente como significativas.
+
+Además se ha encontrado relación entre la puntuación de uso digital, la edad y el abandono o no del banco. 
+
+Un posible consejo para el banco sería centrarse en hacer más cómoda la experiencia a clientes de avanzada edad a la vez que se apuesta por una digitalización generalizada para clientes jóvenes.(Además, la edad fue la variable más significativa de todas en un principio).
+
