@@ -5,7 +5,7 @@ load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 #xgboost
 library(caret)
 library(FactoMineR)  
-
+library(MLmetrics)
 mydata <- data_reducida
 mydata$group<-NULL
 
@@ -47,7 +47,7 @@ index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
 
-library(MLmetrics)
+
 
 f1_recall_summary <- function(data, lev = NULL, model = NULL) {
   precision <- Precision(y_true = data$obs, y_pred = data$pred, positive = "Yes")

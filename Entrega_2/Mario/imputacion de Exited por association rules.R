@@ -4,10 +4,6 @@
 #########################PREPARACION DE LOS DATOS#####################
 library(dplyr)
 library(arules)
-
-# ===============================
-# 1️⃣ Preparar data_ar
-# ===============================
 data_ar <- subset(data_transformada, select = -c(group))
 data_ar <- data_ar[7001:10000, ]
 
@@ -46,17 +42,8 @@ data_ar <- data_ar %>%
                   include.lowest = TRUE)
   )
 
-library(dplyr)
-library(arules)
 
-# ===============================
-# 1️⃣ Convertir data_ar a transacciones
-# ===============================
 data_ar_trans <- as(data_ar, "transactions")
-
-# ===============================
-# 2️⃣ Generar reglas a partir de data_tr
-# ===============================
 rules <- apriori(
   data_tr,
   parameter = list(support = 0.0125, confidence = 0.4, maxlen = 5, minlen = 2)
@@ -65,42 +52,32 @@ rules <- apriori(
 # Quitar reglas redundantes
 reglas_Noredund <- rules[!is.redundant(rules, measure = "confidence")]
 
-# ===============================
 # 3️⃣ Seleccionar reglas de interés
-# ===============================
-# Reglas para Exited = 1 con confianza > 0.93
+# Reglas para Exited = 1
 reglas_exit1 <- subset(reglas_Noredund, rhs %pin% "Exited=1" & confidence >= 0.50)
 
-# Reglas para Exited = 0 con confianza > 0.93
+# Reglas para Exited = 0
 reglas_exit0 <- subset(reglas_Noredund, rhs %pin% "Exited=0" & confidence ==1)
 
-# ===============================
-# 4️⃣ Inicializar vectores de imputación
-# ===============================
+
 rows_to_impute_1 <- rep(FALSE, length(data_ar_trans))
 rows_to_impute_0 <- rep(FALSE, length(data_ar_trans))
 
-# ===============================
-# 5️⃣ Imputar Exited = 1
-# ===============================
+# Imputar Exited = 1
+
 for(i in seq_along(reglas_exit1)) {
   lhs_rule <- lhs(reglas_exit1[i])
   match_rows <- is.subset(lhs_rule, data_ar_trans)
   rows_to_impute_1 <- rows_to_impute_1 | as.logical(match_rows)
 }
 
-# ===============================
-# 6️⃣ Imputar Exited = 0
-# ===============================
+#  Imputar Exited = 0
+
 for(i in seq_along(reglas_exit0)) {
   lhs_rule <- lhs(reglas_exit0[i])
   match_rows <- is.subset(lhs_rule, data_ar_trans)
   rows_to_impute_0 <- rows_to_impute_0 | as.logical(match_rows)
 }
-
-# ===============================
-# 7️⃣ Aplicar imputaciones en data_ar
-# ===============================
 data_ar_imputed <- data_ar
 
 # Imputar según reglas
