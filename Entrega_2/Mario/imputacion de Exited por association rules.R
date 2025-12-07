@@ -69,10 +69,10 @@ reglas_Noredund <- rules[!is.redundant(rules, measure = "confidence")]
 # 3️⃣ Seleccionar reglas de interés
 # ===============================
 # Reglas para Exited = 1 con confianza > 0.93
-reglas_exit1 <- subset(reglas_Noredund, rhs %pin% "Exited=1" & confidence > 0.5)
+reglas_exit1 <- subset(reglas_Noredund, rhs %pin% "Exited=1" & confidence >= 0.50)
 
 # Reglas para Exited = 0 con confianza > 0.93
-reglas_exit0 <- subset(reglas_Noredund, rhs %pin% "Exited=0" & confidence == 1)
+reglas_exit0 <- subset(reglas_Noredund, rhs %pin% "Exited=0" & confidence >= 0.95)
 
 # ===============================
 # 4️⃣ Inicializar vectores de imputación
@@ -123,3 +123,4 @@ saveRDS(
   data_ar_imputed2,
   "~/GitHub/Mineria/DATA/A NUEVOS TEST CON IMPUTADOS DE REPETIDOS/test_df_imputed_AR_01.rds"
 )
+
