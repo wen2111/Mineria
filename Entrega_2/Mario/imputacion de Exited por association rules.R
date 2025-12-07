@@ -72,7 +72,7 @@ reglas_Noredund <- rules[!is.redundant(rules, measure = "confidence")]
 reglas_exit1 <- subset(reglas_Noredund, rhs %pin% "Exited=1" & confidence >= 0.50)
 
 # Reglas para Exited = 0 con confianza > 0.93
-reglas_exit0 <- subset(reglas_Noredund, rhs %pin% "Exited=0" & confidence >= 0.95)
+reglas_exit0 <- subset(reglas_Noredund, rhs %pin% "Exited=0" & confidence ==1)
 
 # ===============================
 # 4️⃣ Inicializar vectores de imputación

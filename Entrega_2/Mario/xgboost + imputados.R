@@ -1,3 +1,6 @@
+#####################RUNEAR ANTES IMPUTACION DE EXITED POR AR"###############
+
+
 load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 #xgboost
 library(caret)
@@ -135,7 +138,7 @@ pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.2071429, "Yes", "No")
 pred_kaggle_class2 <- ifelse(pred_kaggle_prob$Yes > 0.205921, "Yes", "No")
 
 #aplicamos los imputados
-test_df_imputed <- readRDS("~/GitHub/Mineria/DATA/A NUEVOS TEST CON IMPUTADOS DE REPETIDOS/test_df_imputed.rds")
+test_df_imputed <- readRDS("~/GitHub/Mineria/DATA/A NUEVOS TEST CON IMPUTADOS DE REPETIDOS/test_df_imputed_AR_01.rds")
 library(dplyr)
 #ID originales de test
 load("~/GitHub/Mineria/DATA/data.RData")
@@ -154,20 +157,5 @@ submission <- submission %>%
   select(-Exited_new)
 table(submission$Exited)
 
-#Para ver la cantidad de Exited diferentes del modelo y la imputacion por AR
-library(dplyr)
-comparacion <- data_ar_imputed2 %>%
-  mutate(Exited = as.character(Exited)) %>%
-  inner_join(
-    submission %>% mutate(Exited = as.character(Exited)),
-    by = "ID",
-    suffix = c("_imputed", "_submission")
-  )
-
-diferentes <- comparacion %>%
-  filter(Exited_imputed != Exited_submission)
-
-n_diferentes <- nrow(diferentes)
-n_diferentes
 #submission
-write.csv(submission, "~/GitHub/Mineria/Entrega_2/Mario/xgboost_imputing_1.csv", row.names = FALSE)
+write.csv(submission, "~/GitHub/Mineria/submissions queue/para cuando no lleguemos a 3 en un dia/xgboost_imputing_1_v2.csv", row.names = FALSE)
