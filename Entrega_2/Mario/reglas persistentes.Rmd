@@ -108,12 +108,12 @@ perfect_0 <- freq_dup_train %>%
 
 perfect_1 <- freq_dup_train %>%
   filter(
-    prop_1 >= 0.50,   # proporción mínima de 1
+    prop_1 >= 0.5,   # proporción mínima de 1
     n >= 4          # al menos 4 casos de Exited = 1
   ) %>%
   mutate(Exited_impute = 1) %>%
   select(all_of(feature_cols), Exited_impute)
-impute_rules <- bind_rows(perfect_0, perfect_1)
+impute_rules <- bind_rows(perfect_0)
 
 
 impute_rules_clean <- impute_rules %>%

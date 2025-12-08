@@ -158,4 +158,4 @@ submission <- submission %>%
 table(submission$Exited)
 
 #submission
-write.csv(submission, "~/GitHub/Mineria/submissions queue/para cuando no lleguemos a 3 en un dia/xgboost_imputing_1_v2.csv", row.names = FALSE)
+write.csv(submission, "~/GitHub/Mineria/submissions queue/para cuando no lleguemos a 3 en un dia/xgboost_imputing_only0.csv", row.names = FALSE)
