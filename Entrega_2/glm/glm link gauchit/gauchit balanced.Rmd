@@ -1,0 +1,111 @@
+---
+title: "gauchit balanced"
+output: html_document
+date: "2025-12-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ROSE)
+library(caret)
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(ROSE)
+library(caret)
+
+set.seed(123)
+
+# --- Preparar datos ---
+datatrain <- data_reducida_plus[1:7000, !(names(data_reducida_plus) %in% "group")]
+datatrain$Exited <- factor(datatrain$Exited, levels=c(0,1), labels=c("neg","pos"))
+y_numeric <- ifelse(datatrain$Exited == "pos", 1, 0)
+
+# --- Función de métricas ---
+performance_metrics <- function(y_true, prob, cutoff=0.5, dec=3){
+  y_true <- factor(y_true, levels=c(0,1), labels=c("neg","pos"))
+  pred <- factor(ifelse(prob > cutoff, "pos", "neg"), levels=c("neg","pos"))
+  cm <- matrix(0, nrow=2, ncol=2,
+               dimnames=list(Predicted=c("neg","pos"), Actual=c("neg","pos")))
+  tab <- table(Predicted=pred, Actual=y_true)
+  cm[rownames(tab), colnames(tab)] <- tab
+  
+  TN <- cm["neg","neg"]; FP <- cm["pos","neg"]
+  FN <- cm["neg","pos"]; TP <- cm["pos","pos"]
+  
+  Sens <- TP/(TP+FN); Spec <- TN/(TN+FP)
+  PPV  <- TP/(TP+FP); NPV <- TN/(TN+FN)
+  PLR  <- PPV/(1-NPV); NLR <- NPV/(1-PPV)
+  Acc  <- (TP+TN)/sum(cm)
+  
+  list(Sensitivity=round(Sens,dec), Specificity=round(Spec,dec),
+       PPV=round(PPV,dec), NPV=round(NPV,dec),
+       PLR=round(PLR,dec), NLR=round(NLR,dec),
+       Accuracy=round(Acc,dec), ConfusionMatrix=cm)
+}
+
+f1_score_cm <- function(cm){
+  TP <- cm["pos","pos"]; FP <- cm["pos","neg"]; FN <- cm["neg","pos"]
+  precision <- TP / (TP + FP); recall <- TP / (TP + FN)
+  f1 <- 2 * (precision * recall) / (precision + recall)
+  round(f1,3)
+}
+
+# --- Parámetros ---
+k_folds <- 10
+cutpoints <- seq(0.1, 0.5, by=0.01)
+p_values <- seq(0.1, 0.5, by=0.05)
+
+# Crear folds
+folds <- createFolds(datatrain$Exited, k = k_folds, list = TRUE, returnTrain = FALSE)
+
+# Guardar resultados
+all_results <- data.frame()
+
+for(p in p_values){
+  cat("ROSE p =", p, "\n")
+  
+  # Inicializamos vector de probabilidades CV
+  prob_cv <- numeric(nrow(datatrain))
+  
+  for(f in 1:k_folds){
+    test_idx <- folds[[f]]
+    train_idx <- setdiff(1:nrow(datatrain), test_idx)
+    
+    # Crear dataset de entrenamiento y test para este fold
+    train_fold <- datatrain[train_idx, ]
+    test_fold  <- datatrain[test_idx, ]
+    
+    # Aplicar ROSE al fold de entrenamiento
+    rose_train <- ROSE(Exited ~ ., data=train_fold, p=p, seed=123)$data
+    
+    # Entrenar glm link cauchit
+    fit <- glm(Exited ~ ., data=rose_train, family=binomial(link="cauchit"))
+    
+    # Predecir probabilidades sobre el fold de test
+    prob_cv[test_idx] <- predict(fit, newdata=test_fold, type="response")
+  }
+  
+  # Evaluar métricas para cada cutpoint usando probabilidades CV
+  for(cut in cutpoints){
+    m <- performance_metrics(y_numeric, prob_cv, cutoff=cut)
+    all_results <- rbind(all_results, data.frame(
+      ROSE_p = p,
+      Cutpoint = cut,
+      Sensitivity = m$Sensitivity,
+      Specificity = m$Specificity,
+      PPV = m$PPV,
+      NPV = m$NPV,
+      PLR = m$PLR,
+      NLR = m$NLR,
+      Accuracy = m$Accuracy,
+      F1 = f1_score_cm(m$ConfusionMatrix)
+    ))
+  }
+}
+
+all_results
+
+```
+

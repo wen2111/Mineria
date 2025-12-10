@@ -1,0 +1,182 @@
+---
+title: "Pruebas duplicados"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-12-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+load("~/GitHub/Mineria/DATA/data.RData")
+id<-data$ID[7001:10000]
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(dplyr)
+```
+
+```{r}
+hist(data_reducida$Balance)
+```
+A continuación se hará la prueba de buscar valores duplicados discretizando la variable Balance
+```{r}
+cortes <- c(-Inf, 0, 30000, 60000, 90000, 120000, 150000, 180000, 210000, 240000, Inf) 
+etiquetas <- c("Cero", "0-30k", "30k-60k", "60k-90k", "90k-120k", "120k-150k", 
+                      "150k-180k", "180k-210k", "210k-240k", ">240k")
+data_reducida$Balance<- cut(
+    data_reducida$Balance, 
+    breaks = cortes, 
+    labels = etiquetas, 
+    right = TRUE, 
+    include.lowest = TRUE
+)
+```
+
+```{r}
+train_df <- data_reducida[data_reducida$group == "train", ]
+test_df  <- data_reducida[data_reducida$group == "test", ]
+test_df$ID<-id
+```
+
+Conteo duplicados
+```{r}
+feature_cols <- setdiff(names(train_df), c("Exited", "group"))
+
+dup_completos_train <- train_df[
+  duplicated(train_df) |
+  duplicated(train_df, fromLast = TRUE),
+]
+
+nrow(dup_completos_train)
+```
+
+Número idéntico
+```{r}
+table(dup_completos_train$Exited)
+prop.table(table(dup_completos_train$Exited))
+```
+Duplicados más frecuentes en train:
+```{r}
+freq_dup_train <- train_df %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n      = n(),
+    n_0    = sum(Exited == 0),
+    n_1    = sum(Exited == 1),
+    prop_0 = mean(Exited == 0),
+    prop_1 = mean(Exited == 1),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n), desc(n_0))
+
+freq_dup_train
+```
+Duplicados paa Exited=1
+```{r}
+freq_dup_train_1 <- train_df %>%
+  group_by(across(all_of(feature_cols))) %>%
+  summarise(
+    n      = n(),
+    n_1    = sum(Exited == 1),
+    prop_1 = mean(Exited == 1),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n_1),desc(prop_1))
+freq_dup_train_1
+```
+
+
+
+
+# Imputación de coincidencias perfectas
+
+```{r}
+library(dplyr)
+
+MIN_N <- 5
+THRESH_1 <- 0.50
+
+feature_cols <- setdiff(names(train_df), c("Exited", "group", "ID"))
+
+
+perfect_0 <- freq_dup_train %>%
+  filter(prop_0 == 1, n >= MIN_N) %>%
+  mutate(Exited_impute = 0) %>%
+  select(all_of(feature_cols), Exited_impute)
+
+perfect_1 <- freq_dup_train %>%
+  filter(
+    prop_1 >= 0.5,   # proporción mínima de 1
+    n >= 4          # al menos 4 casos de Exited = 1
+  ) %>%
+  mutate(Exited_impute = 1) %>%
+  select(all_of(feature_cols), Exited_impute)
+impute_rules <- bind_rows(perfect_0)
+
+
+impute_rules_clean <- impute_rules %>%
+  mutate(across(all_of(feature_cols), as.character))
+
+test_df_cleaned <- test_df %>%
+  mutate(across(all_of(feature_cols), as.character),
+         Exited = as.numeric(as.character(Exited)))
+
+
+test_df_join <- test_df_cleaned %>%
+  left_join(
+    impute_rules_clean %>% mutate(match_found = TRUE),
+    by = feature_cols
+  )
+
+
+test_df_join <- test_df_cleaned %>%
+  left_join(
+    impute_rules_clean,
+    by = feature_cols
+  ) %>%
+  mutate(
+    # match_found = TRUE solo si realmente hay regla
+    match_found = !is.na(Exited_impute),
+
+    # Exited final imputado
+    Exited_new = if_else(match_found, Exited_impute, Exited)
+  )
+
+# 2) Dataframe final marcando imputadas
+test_df_final <- test_df %>%
+  mutate(
+    Exited = test_df_join$Exited_new,
+    was_imputed = test_df_join$match_found
+  )
+
+# 3) Separación en complementarios
+test_df_imputed <- test_df_final %>%
+  filter(was_imputed == TRUE)
+test_df_imputed<- test_df_imputed %>%
+  select(ID, Exited)
+test_df_imputed$Exited <- ifelse(test_df_imputed$Exited==1, "Yes", "No")
+test_df_not_imputed <- test_df_final %>%
+  filter(was_imputed == FALSE)
+```
+
+```{r}
+table(as.factor(test_df_imputed$Exited))
+```
+Guardamos los df test
+```{r}
+test_df_not_imputed$was_imputed<-NULL
+test_df_imputed$was_imputed<-NULL
+saveRDS(
+  test_df_imputed,
+  "~/GitHub/Mineria/DATA/A NUEVOS TEST CON IMPUTADOS DE REPETIDOS/test_df_imputed.rds"
+)
+
+saveRDS(
+  test_df_not_imputed,
+  "~/GitHub/Mineria/DATA/A NUEVOS TEST CON IMPUTADOS DE REPETIDOS/test_df_not_imputed.rds"
+)
+```
+
+

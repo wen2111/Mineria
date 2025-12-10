@@ -1,0 +1,103 @@
+---
+title: "glm_balanced_cloglog"
+output: html_document
+date: "2025-12-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(caret)
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(caret)
+
+set.seed(123)
+
+# --- Preparar datos ---
+datatrain <- data_reducida_plus[1:7000, !(names(data_reducida_plus) %in% "group")]
+datatest  <- data_reducida_plus[7001:10000, !(names(data_reducida_plus) %in% "group")]
+
+# Convertimos la variable de salida a factor
+datatrain$Exited <- factor(datatrain$Exited, levels=c(0,1), labels=c("neg","pos"))
+
+# --- Control de cross-validation ---
+train_ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = TRUE
+)
+
+# --- Entrenar modelo logístico con enlace cauchit ---
+fit_cauchit <- train(
+  Exited ~ .,
+  data = datatrain,
+  method = "glm",
+  family = binomial(link = "cauchit"), 
+  trControl = train_ctrl,
+  metric = "ROC"
+)
+
+# --- Probabilidades out-of-fold alineadas ---
+prob_alineada <- numeric(nrow(datatrain))
+prob_alineada[fit_cauchit$pred$rowIndex] <- fit_cauchit$pred$pos
+
+# Transformamos a numérico la variable de salida
+y_numeric <- ifelse(datatrain$Exited == "pos", 1, 0)
+
+# --- Función de métricas ---
+performance_metrics <- function(y_true, prob, cutoff=0.5, dec=3){
+  y_true <- factor(y_true, levels=c(0,1), labels=c("neg","pos"))
+  pred <- factor(ifelse(prob > cutoff, "pos", "neg"),
+                 levels=c("neg","pos"))
+  cm <- matrix(0, nrow=2, ncol=2,
+               dimnames=list(Predicted=c("neg","pos"),
+                             Actual=c("neg","pos")))
+  tab <- table(Predicted=pred, Actual=y_true)
+  cm[rownames(tab), colnames(tab)] <- tab
+  
+  TN <- cm["neg","neg"]; FP <- cm["pos","neg"]
+  FN <- cm["neg","pos"]; TP <- cm["pos","pos"]
+  
+  Sens <- TP/(TP+FN); Spec <- TN/(TN+FP)
+  PPV  <- TP/(TP+FP); NPV <- TN/(TN+FN)
+  PLR  <- PPV/(1-NPV); NLR <- NPV/(1-PPV)
+  Acc  <- (TP+TN)/sum(cm)
+  
+  list(Sensitivity=round(Sens,dec), Specificity=round(Spec,dec),
+       PPV=round(PPV,dec), NPV=round(NPV,dec),
+       PLR=round(PLR,dec), NLR=round(NLR,dec),
+       Accuracy=round(Acc,dec), ConfusionMatrix=cm)
+}
+
+# --- Función F1 ---
+f1_score_cm <- function(cm){
+  TP <- cm["pos","pos"]; FP <- cm["pos","neg"]; FN <- cm["neg","pos"]
+  precision <- TP / (TP + FP); recall <- TP / (TP + FN)
+  f1 <- 2 * (precision * recall) / (precision + recall)
+  round(f1,3)
+}
+
+# --- Evaluar métricas para distintos cutpoints ---
+cutpoints <- seq(0.1, 0.5, by=0.01)
+results <- data.frame(Cutpoint=numeric(), Sensitivity=numeric(), Specificity=numeric(),
+                      PPV=numeric(), NPV=numeric(), PLR=numeric(), NLR=numeric(),
+                      Accuracy=numeric(), F1=numeric())
+
+for(c in cutpoints){
+  m <- performance_metrics(y_numeric, prob_alineada, cutoff=c)
+  results <- rbind(results, data.frame(
+    Cutpoint=c, Sensitivity=m$Sensitivity, Specificity=m$Specificity,
+    PPV=m$PPV, NPV=m$NPV, PLR=m$PLR, NLR=m$NLR, Accuracy=m$Accuracy,
+    F1=f1_score_cm(m$ConfusionMatrix)
+  ))
+}
+
+# --- Mostrar resultados ---
+results
+
+```
+
