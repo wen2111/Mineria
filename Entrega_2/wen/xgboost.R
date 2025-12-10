@@ -44,7 +44,8 @@ x <- fastDummies::dummy_cols(x,
 x<-cbind(x,mydata[,6:7]) # adjunto las numericas
 x$Exited<-mydata$Exited # añado la respuesta
 mydata<-x
-
+mydata$hasB<-ifelse(mydata$Balance==0,0,1)
+mydata$Balance<-NULL
 # SEPARAR TRAIN Y TEST
 train <- mydata[1:7000,]
 test <- mydata[7001:10000,]  # 3000 obs
@@ -56,7 +57,7 @@ train$Exited <- factor(train$Exited,
 
 # PARTICION TRAIN2/TEST2
 
-set.seed(123)
+set.seed(666)
 
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
@@ -89,8 +90,8 @@ fit_boot_auc <- train(Exited ~ ., data=train2,
 train_pred_prob <- predict(fit_boot_auc, newdata = train2, type = "prob")
 test_pred_prob  <- predict(fit_boot_auc, newdata = test2,  type = "prob")
 
-train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
-test_pred_cut  <- ifelse(test_pred_prob$Yes > 0.2071429, "Yes", "No")
+train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2052182, "Yes", "No")
+test_pred_cut  <- ifelse(test_pred_prob$Yes > 0.2052182, "Yes", "No")
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
 test_pred_cut  <- factor(test_pred_cut,  levels = c("No","Yes"))
@@ -138,7 +139,7 @@ fit_final_glm <- train(Exited ~ ., data=train,
 )
 
 train_pred_prob <- predict(fit_final_glm, newdata = train, type = "prob")
-train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
+train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2052182, "Yes", "No")
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
 
@@ -149,8 +150,7 @@ f1_score(conf_train)
 
 # prediccion
 pred_kaggle_prob <- predict(fit_final_glm, newdata = test, type = "prob")
-pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.2071429, "Yes", "No")
-pred_kaggle_class2 <- ifelse(pred_kaggle_prob$Yes > 0.205921, "Yes", "No")
+pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.2052182, "Yes", "No")
 test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "xgboost2.csv", row.names = FALSE)
+write.csv(submission, "xgboost_bal2.csv", row.names = FALSE)

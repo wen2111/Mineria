@@ -141,3 +141,43 @@ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
   Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
 1  Train2  0.2030612 0.7969388  0.510352          0.4857143   0.8782497 0.4977284
 2   Test2  0.2100000 0.7900000  0.492891          0.4781609   0.8714715 0.4854142
+
+###########################################################3
+xgboost con 2 balance
+
+Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2424490 0.7575510 0.4483582          0.7399015   0.7621622 0.5583643
+2   Test2  0.3038095 0.6961905 0.3669725          0.6436782   0.7099099 0.4674457
+
+
+xgboost con 2 balance semilla 666
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2655102 0.7344898 0.4124847          0.6640394   0.7528958 0.5088713
+2   Test2  0.2695238 0.7304762 0.4054834          0.6459770   0.7525526 0.4982270
+
+con semilla 6897
+
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2324490 0.7675510 0.4626506          0.7566502   0.7703990 0.5742056
+2   Test2  0.2838095 0.7161905 0.3851641          0.6206897   0.7411411 0.4753521
+
+original solo
+
+Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2653061 0.7346939 0.4157303          0.6926108   0.7456885 0.5195861
+2   Test2  0.2957143 0.7042857 0.3769841          0.6551724   0.7171171 0.4785894
+
+hasbalance semilla 123
+
+Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2834694 0.7165306 0.3941110          0.6857143   0.7245817 0.5005394
+2   Test2  0.3066667 0.6933333 0.3672173          0.6643678   0.7009009 0.4729951
+
+SEMILLA 6897
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2718367 0.7281633 0.4070381          0.6837438   0.7397683 0.5102941
+2   Test2  0.2852381 0.7147619 0.3894879          0.6643678   0.7279279 0.4910790
+semilla 666
+ Dataset Error_rate  Accuracy Precision Recall_Sensitivity Specificity  F1_Score
+1  Train2  0.2816327 0.7183673 0.3929619          0.6600985   0.7335907 0.4926471
+2   Test2  0.2771429 0.7228571 0.4000000          0.6758621   0.7351351 0.5025641
