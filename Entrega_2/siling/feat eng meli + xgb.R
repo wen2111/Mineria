@@ -116,7 +116,7 @@ print(resultados_xgb)
 
 
 
-################# 测试不同阈值对xgb的影响
+################# con diferentes umbrales en test2 ##########################
 thresholds <- seq(0.1, 0.5, by = 0.05)
 results <- data.frame()
 
