@@ -34,14 +34,35 @@ sum(duplicated(data_sur$surname_clean) | duplicated(data_sur$surname_clean, from
 
 keys <- c("Gender", "Age", "Geography", "MaritalStatus", "EducationLevel")
 
-data_sin_duplicados <- data_transformada_n[!(duplicated(data_transformada_n[, keys]) & data_transformada_n$group == "train"), ]
-sum(data_sin_duplicados$group=="train")
+# Mantener la primera ocurrencia de cada duplicado dentro de 'train'
+duplicado_train <- duplicated(data_transformada_n[data_transformada_n$group == "train", keys])
 
-#Un total de 7473
+# Crear un vector lógico para todas las filas
+keep <- rep(TRUE, nrow(data_transformada_n))
+
+# Marcar como FALSE las filas duplicadas de 'train' (excepto la primera)
+keep[data_transformada_n$group == "train"][duplicado_train] <- FALSE
+
+# Filtrar los datos
+data_sin_duplicados <- data_transformada_n[keep, ]
+sum(data_sin_duplicados)
 
 # Más estricto: 
 keys_e <- c("Gender", "Age", "Geography", "MaritalStatus")
-data_sin_duplicados_e <- data_transformada_n[!(duplicated(data_transformada_n[, keys_e]) & data_transformada_n$group == "train"), ]
+# Identificar duplicados dentro de 'train'
+duplicado_train <- duplicated(data_transformada_n[data_transformada_n$group == "train", keys_e])
+
+# Crear vector lógico para mantener todas las filas por defecto
+keep <- rep(TRUE, nrow(data_transformada_n))
+
+# Marcar como FALSE las filas duplicadas de 'train' (excepto la primera)
+keep[data_transformada_n$group == "train"][duplicado_train] <- FALSE
+
+# Filtrar el dataframe
+data_sin_duplicados_e <- data_transformada_n[keep, ]
+
+# Revisar
+sum(data_sin_duplicados_e$group == "train")
 
 # Más base columnas: 
 
