@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Probamos con el svm radial, sigmoidal y polinomial: 
 
-```{r}
+```{r,message=FALSE,warning=FALSE}
 library(recipes)
 library(e1071)
 library(ggplot2)
