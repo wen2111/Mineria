@@ -6,7 +6,7 @@ library(printr)
 library(randomForest)
 library(ranger)
 
-mydata <- data_reducida
+mydata <- data_transformada
 #######3
 mydata$CustomerSegment<-NULL
 mydata$LoanStatus<-NULL
