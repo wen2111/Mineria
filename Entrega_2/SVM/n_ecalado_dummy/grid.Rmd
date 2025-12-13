@@ -1,0 +1,164 @@
+---
+title: "grid_search"
+author: "Laura Belmonte"
+date: "2025-12-08"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,warning=FALSE,message=FALSE}
+library(recipes)
+library(e1071)
+library(mlbench)
+library(ggplot2)
+library(ISLR)
+library(caret)
+library(pROC)
+library(dplyr)
+load("~/Documents/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+bd<-data_reducida
+```
+
+# Dumificar
+```{r}
+set.seed(123)
+
+rec <- recipe(Exited ~ ., data = bd) %>%
+  step_dummy(all_nominal_predictors(), -group, one_hot = TRUE, keep_original_cols = FALSE)
+
+# Prepara y aplica a un NUEVO objeto
+bd_procesado <- prep(rec) %>% bake(new_data = NULL)
+bd<-bd_procesado
+#summary(bd) se ha dummificado correctamente
+```
+
+```{r}
+#Dividir la base de datos
+trainbase<-bd[bd$group=="train",]
+trainbase$group<-NULL
+testbase<-bd[bd$group=="test",]
+testbase$group<-NULL
+ind <- sample(1:nrow(trainbase), 0.7*nrow(trainbase))
+train <- trainbase[ind,]
+test <- trainbase[-ind,]
+```
+
+# Mejor kernel
+
+Comenzamos con los diferentes kernels posibles dejando fijo los valores expuestos por la función. 
+
+```{r}
+
+threshold <- 0.20
+evaluar_kernel <- function(
+    kernel_name, 
+    cost_val = 10, 
+    gamma_val = 0.1, 
+    degree_val = 3, 
+    coef0_val = 0.0, 
+    train_data, 
+    test_data
+) {
+    svm.model <- svm(
+        Exited ~ ., 
+        data = train_data, 
+        cost = cost_val, 
+        kernel = kernel_name,
+        gamma = gamma_val, 
+        degree = degree_val,
+        coef0 = coef0_val,
+        probability = TRUE 
+    )
+    svm.pred_prob_matrix <- predict(
+        svm.model, 
+        test_data, 
+        probability = TRUE
+    )
+    svm.pred_prob <- attr(svm.pred_prob_matrix, "probabilities")[, "1"]
+    svm.pred_class <- ifelse(svm.pred_prob >= threshold, "1", "0")
+
+    cm <- confusionMatrix(
+        as.factor(svm.pred_class), 
+        as.factor(test_data$Exited), 
+        positive = "1"
+    )
+
+    roc_obj <- roc(test_data$Exited, svm.pred_prob, quiet = TRUE)
+    auc_val <- auc(roc_obj)
+
+    return(data.frame(
+        Kernel = kernel_name,
+        Accuracy = cm$overall["Accuracy"], 
+        Precision = cm$byClass["Precision"], 
+        Recall = cm$byClass["Recall"], 
+        Specificity = cm$byClass["Specificity"], 
+        F1_Score = cm$byClass["F1"], 
+        AUC = auc_val
+    ))
+}
+
+kernels_a_probar <- c("linear", "polynomial", "radial", "sigmoid")
+cost_val <- 10
+gamma_val <- 0.1 
+degree_val <- 3   
+coef0_val <- 0.0  
+
+resultados_kernels <- lapply(kernels_a_probar, function(k) {
+    evaluar_kernel(
+        kernel_name = k,
+        cost_val = cost_val,
+        gamma_val = gamma_val,
+        degree_val = degree_val,
+        coef0_val = coef0_val,
+        train_data = train,
+        test_data = test
+    )
+})
+resultados_finales <- do.call(rbind, resultados_kernels) %>%
+    mutate(across(where(is.numeric), ~ round(., 4))) %>%
+    select(Kernel, F1_Score, Recall, Precision, Accuracy, Specificity, AUC) %>% 
+    arrange(desc(F1_Score)) 
+print(resultados_finales)
+```
+
+# Grid search
+
+## Polynomial
+
+```{r}
+svm_cv <- tune(
+  "svm",
+  Exited ~ .,
+  data = train,
+  kernel = "polynomial",
+  ranges = list(
+    cost = 5,
+    degree = 5,
+    gamma = c(0.01, 0.1, 1),
+    coef0 = c(0, 1)
+  ),
+  tunecontrol = tune.control(),
+  cross = 10,
+  maxit = 200
+)
+
+
+summary(svm_cv)
+ggplot(data = svm_cv$performances, 
+       aes(x = cost, y = error, color = as.factor(degree), group = degree)) +
+  geom_line() +
+  geom_point(size = 2) +
+  facet_grid(gamma ~ coef0, labeller = label_both) +  # gamma en filas, coef0 en columnas
+  labs(
+    title = "Error de clasificación vs C y degree (kernel polinomial)",
+    x = "Cost (C)",
+    y = "Error de clasificación",
+    color = "Degree"
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+```

@@ -1,0 +1,171 @@
+---
+title: "svm_extras"
+author: "Laura Belmonte"
+date: "2025-12-08"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(recipes)
+library(e1071)
+library(caret)
+library(pROC)
+library(dplyr)
+
+load("~/Documents/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+bd <- data_reducida
+
+# MEJORA 1: Preprocesamiento más completo
+set.seed(123)
+rec <- recipe(Exited ~ ., data = bd) %>%
+  step_dummy(all_nominal_predictors(), -group, one_hot = TRUE, keep_original_cols = FALSE) %>%
+  step_center(all_numeric_predictors()) %>%     # Centrar
+  step_scale(all_numeric_predictors())          # Escalar (importante para SVM)
+
+bd_procesado <- prep(rec) %>% bake(new_data = NULL)
+bd <- bd_procesado
+
+# Dividir la base de datos
+trainbase <- bd[bd$group == "train",]
+trainbase$group <- NULL
+testbase <- bd[bd$group == "test",]
+testbase$group <- NULL
+
+set.seed(123)
+ind <- sample(1:nrow(trainbase), 0.7*nrow(trainbase))
+train <- trainbase[ind,]
+test <- trainbase[-ind,]
+
+# MEJORA 2: Balancear clases con class.weights
+table(train$Exited)
+peso_0 <- 1
+peso_1 <- sum(train$Exited == "0") / sum(train$Exited == "1")  # Penalizar más la clase minoritaria
+
+# MEJORA 3: Función mejorada con class.weights y ajuste de threshold óptimo
+evaluar_kernel_mejorado <- function(
+    kernel_name, 
+    cost_val = 10, 
+    gamma_val = 0.1, 
+    degree_val = 3, 
+    coef0_val = 0.0, 
+    train_data, 
+    test_data,
+    class_weights = NULL
+) {
+    svm.model <- svm(
+        Exited ~ ., 
+        data = train_data, 
+        cost = cost_val, 
+        kernel = kernel_name,
+        gamma = gamma_val, 
+        degree = degree_val,
+        coef0 = coef0_val,
+        class.weights = class_weights,  # Nuevo parámetro
+        probability = TRUE 
+    )
+    
+    svm.pred_prob_matrix <- predict(svm.model, test_data, probability = TRUE)
+    svm.pred_prob <- attr(svm.pred_prob_matrix, "probabilities")[, "1"]
+    
+    # Encontrar threshold óptimo basado en curva ROC
+    roc_obj <- roc(test_data$Exited, svm.pred_prob, quiet = TRUE)
+    coords_roc <- coords(roc_obj, "best", best.method = "youden")
+    threshold_optimo <- coords_roc$threshold
+    
+    # Predicción con threshold óptimo
+    svm.pred_class <- ifelse(svm.pred_prob >= threshold_optimo, "1", "0")
+    
+    cm <- confusionMatrix(
+        as.factor(svm.pred_class), 
+        as.factor(test_data$Exited), 
+        positive = "1"
+    )
+    
+    auc_val <- auc(roc_obj)
+    
+    return(data.frame(
+        Kernel = kernel_name,
+        Threshold = round(threshold_optimo, 4),
+        Accuracy = cm$overall["Accuracy"], 
+        Precision = cm$byClass["Precision"], 
+        Recall = cm$byClass["Recall"], 
+        Specificity = cm$byClass["Specificity"], 
+        F1_Score = cm$byClass["F1"], 
+        AUC = auc_val
+    ))
+}
+
+# MEJORA 4: Grid Search para mejores hiperparámetros
+kernels_a_probar <- c("linear", "polynomial", "radial", "sigmoid")
+
+# Mejores valores según el kernel
+config_kernels <- list(
+    linear = list(cost = c(0.1, 1, 10, 100)),
+    polynomial = list(cost = c(1, 10, 100), degree = c(2, 3, 4), coef0 = c(0, 1)),
+    radial = list(cost = c(1, 10, 100), gamma = c(0.01, 0.1, 1)),
+    sigmoid = list(cost = c(1, 10, 100), gamma = c(0.01, 0.1), coef0 = c(0, 1))
+)
+
+# Probar polynomial con diferentes configuraciones (el mejor kernel)
+resultados_poly <- expand.grid(
+    cost = c(1, 10, 50, 100),
+    degree = c(2, 3, 4),
+    coef0 = c(0, 0.5, 1)
+) %>%
+    rowwise() %>%
+    do({
+        evaluar_kernel_mejorado(
+            kernel_name = "polynomial",
+            cost_val = .$cost,
+            gamma_val = 0.1,
+            degree_val = .$degree,
+            coef0_val = .$coef0,
+            train_data = train,
+            test_data = test,
+            class_weights = c("0" = peso_0, "1" = peso_1)
+        ) %>%
+        mutate(Cost = .$cost, Degree = .$degree, Coef0 = .$coef0)
+    }) %>%
+    ungroup() %>%
+    arrange(desc(F1_Score))
+
+cat("\n=== TOP 5 CONFIGURACIONES POLYNOMIAL ===\n")
+print(head(resultados_poly, 5))
+
+# Comparar todos los kernels con configuración base pero mejorada
+resultados_kernels <- lapply(kernels_a_probar, function(k) {
+    evaluar_kernel_mejorado(
+        kernel_name = k,
+        cost_val = 10,
+        gamma_val = 0.1,
+        degree_val = 3,
+        coef0_val = 0.0,
+        train_data = train,
+        test_data = test,
+        class_weights = c("0" = peso_0, "1" = peso_1)
+    )
+})
+
+resultados_finales <- do.call(rbind, resultados_kernels) %>%
+    mutate(across(where(is.numeric), ~ round(., 4))) %>%
+    arrange(desc(F1_Score))
+
+cat("\n=== COMPARACIÓN DE KERNELS (CON MEJORAS) ===\n")
+print(resultados_finales)
+
+# MEJORA 5: Entrenar modelo final con mejor configuración
+mejor_config <- resultados_poly[1, ]
+
+cat("\n=== MEJOR MODELO ===\n")
+cat("Kernel: Polynomial\n")
+cat("Cost:", mejor_config$Cost, "\n")
+cat("Degree:", mejor_config$Degree, "\n")
+cat("Coef0:", mejor_config$Coef0, "\n")
+cat("F1-Score:", mejor_config$F1_Score, "\n")
+cat("AUC:", mejor_config$AUC, "\n")
+cat("Threshold óptimo:", mejor_config$Threshold, "\n")
+```
