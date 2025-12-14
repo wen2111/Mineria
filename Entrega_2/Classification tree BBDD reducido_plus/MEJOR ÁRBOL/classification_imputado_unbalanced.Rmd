@@ -24,7 +24,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r, include=FALSE}
-load("~/Documents/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
 library(rpart)
 library(caret)
 library(rpart.plot)
@@ -215,52 +215,51 @@ library(ggplot2)
 
 set.seed(1271)
 
-# ---- Función F1-Score ----
 f1_score <- function(conf_matrix) {
   precision <- conf_matrix$byClass["Pos Pred Value"]
   recall <- conf_matrix$byClass["Sensitivity"]
   2 * (precision * recall) / (precision + recall)
 }
 
-# ---- Inicializar resultados ----
 resultados <- data.frame()
 
-# ---- Iteración para p ----
-for(p in seq(0.05, 0.50, by = 0.05)) {
+for(p in seq(0.05, 0.50, by = 0.01)) {
 
-  # Seeds necesarias para caret
-  seeds <- vector(mode = "list", length = 6)
-  for(i in 1:5) seeds[[i]] <- sample.int(1000, 10)  
-  seeds[[6]] <- sample.int(1000, 1)
+  k <- 10
+  n_tune <- 10
 
-  # Balanceo ROSE
-  set.seed(123)
+  seeds <- vector(mode = "list", length = k + 1)
+  for(i in 1:k) seeds[[i]] <- sample.int(1000, n_tune)
+  seeds[[k + 1]] <- sample.int(1000, 1)
+
   data_balanced <- ROSE(Exited ~ ., data = train, p = p, seed = 123)$data
-  
-  # Entrenamiento
+
   model <- train(
-    Exited ~ ., 
-    method = "rpart", 
+    Exited ~ .,
     data = data_balanced,
-    tuneLength = 10, 
-    trControl = trainControl(method = "cv", number = 5, seeds = seeds)
+    method = "rpart",
+    tuneLength = n_tune,
+    trControl = trainControl(
+      method = "cv",
+      number = k,
+      seeds = seeds
+    )
   )
-  
-  # ---- Predicciones Train ----
-  pred_train_prob <- predict(model, train, type = "prob")[,2]
+
+  best_cp <- model$bestTune$cp
+
+  pred_train_prob <- predict(model, train, type = "prob")[, 2]
+  pred_test_prob  <- predict(model, test,  type = "prob")[, 2]
+
   pclass_train <- factor(ifelse(pred_train_prob >= p, 1, 0))
-  
-  # ---- Predicciones Test ----
-  pred_test_prob <- predict(model, test, type = "prob")[,2]
-  pclass_test <- factor(ifelse(pred_test_prob >= p, 1, 0))
-  
-  # ---- Matrices ----
+  pclass_test  <- factor(ifelse(pred_test_prob  >= p, 1, 0))
+
   cm_train <- confusionMatrix(pclass_train, train$Exited, positive = "1")
-  cm_test  <- confusionMatrix(pclass_test, test$Exited, positive = "1")
-  
-  # ---- Guardar resultados ----
+  cm_test  <- confusionMatrix(pclass_test,  test$Exited,  positive = "1")
+
   nueva_fila <- data.frame(
     p = p,
+    cp = best_cp,
     F1_Train = f1_score(cm_train),
     F1_Test  = f1_score(cm_test),
     Sensitivity_Train = cm_train$byClass["Sensitivity"],
@@ -270,51 +269,143 @@ for(p in seq(0.05, 0.50, by = 0.05)) {
     Accuracy_Train = cm_train$overall["Accuracy"],
     Accuracy_Test  = cm_test$overall["Accuracy"]
   )
-  
+
   resultados <- rbind(resultados, nueva_fila)
 }
-
-# ---- Imprimir tabla ----
 print(resultados)
 
-# ---- Gráfico F1 Test vs p ----
+best_row <- resultados[which.max(resultados$F1_Test), ]
 ggplot(resultados, aes(x = p, y = F1_Test)) +
-  geom_line(color = "blue") +
-  geom_point(color = "red") +
+  geom_line(color = "blue", size = 1.2) +
+  geom_point(color = "red", size = 2) +
+
+  geom_point(
+    data = best_row,
+    aes(x = p, y = F1_Test),
+    color = "darkgreen",
+    size = 4
+  ) +
+ 
+  geom_text(
+    data = best_row,
+    aes(
+      x = p,
+      y = F1_Test,
+      label = paste0("Max F1 = ", round(F1_Test, 3), "\n p = ", p)
+    ),
+    vjust = -1,
+    color = "darkgreen"
+  ) +
+  
   labs(
     title = "F1-Score en Test vs p (ROSE)",
-    x = "p (proporción de clase positiva en ROSE)",
+    x = "p (proporción clase positiva en ROSE)",
     y = "F1-Score Test"
   ) +
   theme_minimal()
+best_model <- resultados %>% 
+  arrange(desc(F1_Test)) %>% 
+  slice(1)
 
+print(best_model)
 ```
 
-## Conclusiones balanceo
-
-Para valores bajos de p ( < 0.2) el modelo casi no predice la clase positiva, dando F1 muy bajos.
-
-Un balance cercano a p = 0.4 - 0.5 maximiza F1-Test y sensibilidad, siendo óptimo para detectar la clase minoritaria.
+## Características del mejor árbol
 
 ```{r}
-library(ggplot2)
-library(reshape2)
+library(ROSE)
+library(caret)
+library(dplyr)
 
-# Seleccionar métricas para graficar
-resultados_long <- melt(resultados, id.vars = "p", 
-                        measure.vars = c("F1_Test", "Sensitivity_Test", "Accuracy_Test"),
-                        variable.name = "Metric", value.name = "Value")
 
-# Gráfico
-ggplot(resultados_long, aes(x = p, y = Value, color = Metric)) +
-  geom_line(size = 1.2) +
-  geom_point(size = 2) +
-  labs(title = "Métricas Test vs p (ROSE)", x = "p (proporción clase positiva)", y = "Valor") +
-  scale_color_manual(values = c("F1_Test" = "blue", 
-                                "Sensitivity_Test" = "red", 
-                                "Accuracy_Test" = "green")) +
-  theme_minimal()
+best_row <- resultados[which.max(resultados$F1_Test), ]
+best_p  <- best_row$p
+best_cp <- best_row$cp
+
+data_best <- ROSE(Exited ~ ., data = train, p = best_p, seed = 123)$data
+
+best_model <- train(
+  Exited ~ .,
+  data = data_best,
+  method = "rpart",
+  tuneGrid = data.frame(cp = best_cp),
+  trControl = trainControl(method = "none")
+)
+
+tree  <- best_model$finalModel
+frame <- tree$frame
+
+n_nodes        <- nrow(frame)
+n_leaves       <- sum(frame$var == "<leaf>")
+max_depth      <- max(frame$depth)
+min_leaf_size  <- min(frame$n[frame$var == "<leaf>"])
+root <- frame[1, ]
+
+p0_root <- root$yval2[4]
+p1_root <- root$yval2[5] 
+
+gini_root <- 1 - (p0_root^2 + p1_root^2)
+gini_root
+
+
+gini_nodes <- sapply(1:nrow(frame), function(i) {
+  p0 <- frame$yval2[i, 4]
+  p1 <- frame$yval2[i, 5]
+  1 - (p0^2 + p1^2)
+})
+
+gini_weighted <- sum(frame$n * gini_nodes) / sum(frame$n)
+gini_weighted
+
+gini_reduction <- tree$variable.importance
+
+
+tabla_arbol <- data.frame(
+  Medida = c(
+    "Número total de nodos",
+    "Número de hojas",
+    "Profundidad máxima",
+    "Tamaño mínimo de hoja",
+    "Gini del nodo raíz",
+    "Gini medio ponderado del árbol"
+  ),
+  Valor = c(
+    n_nodes,
+    n_leaves,
+    max_depth,
+    min_leaf_size,
+    round(gini_root, 3),
+    round(gini_weighted, 3)
+  )
+)
+
+print(tabla_arbol)
+
+
+tabla_gini_vars <- data.frame(
+  Variable = names(gini_reduction),
+  Reduccion_Gini = as.numeric(gini_reduction)
+) %>%
+  arrange(desc(Reduccion_Gini))
+
+print(tabla_gini_vars)
+
 ```
+
+## Visualizamos el mejor árbol
+
+```{r}
+library(rpart.plot)
+
+rpart.plot(tree,
+           type = 3,        # cajas completas con bordes
+           extra = 106,     # muestra clase, probabilidades y nº de observaciones
+           fallen.leaves = TRUE,
+           cex = 0.7,       # tamaño del texto
+           main = "Árbol de decisión final")
+```
+
+
 
 
 
