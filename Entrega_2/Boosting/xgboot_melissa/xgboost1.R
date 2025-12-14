@@ -131,7 +131,6 @@ plot(roc_obj, print.auc = TRUE, print.thres = "best", col="blue", main="ROC Curv
 #####################################################
 # Obtenemos predicciones también para train2 para ver si hay overfitting
 probs_train2 <- predict(modelo_xgb, dtrain2)
-
 # Convertimos probabilidad a clase usando el umbral optimizado
 pred_class_train2 <- ifelse(probs_train2 > umbral_optimo, 1, 0)
 pred_class_test2  <- ifelse(probs_test2 > umbral_optimo, 1, 0)

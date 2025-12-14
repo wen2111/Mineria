@@ -1,32 +1,3 @@
-
-library(fastDummies)
-
-# Convertir todas las variables categóricas en dummies, excepto la variable respuesta
-mydata_dummies <- dummy_cols(
-  mydata,
-  select_columns = c("Gender", "EducationLevel", "LoanStatus", "Geography",
-                     "HasCrCard", "IsActiveMember", "CustomerSegment",
-                     "MaritalStatus", "SavingsAccountFlag"),
-  remove_first_dummy = TRUE,   # Para evitar multicolinealidad
-  remove_selected_columns = TRUE  # Para eliminar las columnas originales
-)
-
-# Exited queda como la variable respuesta
-mydata<-mydata_dummies
-# FAMD
-
-train_famd <- FAMD(train[, !names(train) %in% "Exited"],ncp = 25,
-                   graph = FALSE)
-train_famd_coord <- as.data.frame(train_famd$ind$coord)
-train_famd_coord$Exited <- train$Exited
-
-test_famd <- FAMD(test[, !names(test) %in% "Exited"],ncp=25,
-                  graph = FALSE)
-test_famd_coord <- as.data.frame(test_famd$ind$coord)
-test_famd_coord$Exited <- test$Exited
-
-train<-train_famd_coord
-test<-test_famd_coord
 ########################################################################
 #xgboost
 library(caret)
@@ -44,10 +15,12 @@ x <- fastDummies::dummy_cols(x,
 x<-cbind(x,mydata[,6:7]) # adjunto las numericas
 x$Exited<-mydata$Exited # añado la respuesta
 mydata<-x
-
+mydata$hasB<-ifelse(mydata$Balance==0,0,1)
+mydata$Balance<-NULL
 # SEPARAR TRAIN Y TEST
 train <- mydata[1:7000,]
 test <- mydata[7001:10000,]  # 3000 obs
+
 
 # LABELS PARA EXITED
 train$Exited <- factor(train$Exited,
@@ -75,19 +48,34 @@ ctrl_boot_auc <- trainControl(method = "cv",
                               number = 5 ,         
                               classProbs = TRUE,
                               summaryFunction = f1_recall_summary
-                              #, sampling = "up"
+                              #,search = "grid"
 )
 
-fit_boot_auc <- train(Exited ~ ., data=train2, 
-                      method = "xgbTree",
-                      trControl = ctrl_boot_auc, metric = "F1",
-                      preProcess = c("scale"),verbosity = 0
+xgb_grid <- expand.grid(
+  nrounds = c(150,300),
+  max_depth = c(2,3,5),
+  eta = c(0.1,0.4,0.6),
+  gamma = c(3,5,6) ,             
+  colsample_bytree = 0.8,
+  min_child_weight = 1,
+  subsample = 0.5
 )
 
-#fit_boot_auc$results$F1
+fit_tuning <- train(
+  Exited ~ ., 
+  data = train2,
+  method = "xgbTree",
+  metric = "F1",
+  trControl = ctrl_boot_auc,
+  tuneGrid = xgb_grid,  
+  preProcess = "scale",
+  verbosity = 0
+)
+
+fit_tuning$bestTune
 # Predicciones probabilísticas
-train_pred_prob <- predict(fit_boot_auc, newdata = train2, type = "prob")
-test_pred_prob  <- predict(fit_boot_auc, newdata = test2,  type = "prob")
+train_pred_prob <- predict(fit_tuning, newdata = train2, type = "prob")
+test_pred_prob  <- predict(fit_tuning, newdata = test2,  type = "prob")
 
 train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
 test_pred_cut  <- ifelse(test_pred_prob$Yes > 0.2071429, "Yes", "No")
@@ -130,13 +118,24 @@ kpis <- data.frame(
 kpis
 
 #final train
-set.seed(123)
+fit_tuning$bestTune
+xgb_grid_no_tuning <- expand.grid(
+  nrounds = 150,
+  max_depth = 3,
+  eta = 0.1,
+  gamma = 3,              
+  colsample_bytree = 0.8,
+  min_child_weight = 1,
+  subsample = 0.5
+)
+set.seed(459)
 fit_final_glm <- train(Exited ~ ., data=train, 
                        method = "xgbTree",
                        trControl = ctrl_boot_auc, metric = "F1",
-                       preProcess = c("scale"),verbosity = 0
+                       preProcess = c("scale"),verbosity = 0,
+                       tuneGrid=xgb_grid_no_tuning
+                       
 )
-
 train_pred_prob <- predict(fit_final_glm, newdata = train, type = "prob")
 train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
 # Pasamos a clase: yes/no
@@ -150,7 +149,7 @@ f1_score(conf_train)
 # prediccion
 pred_kaggle_prob <- predict(fit_final_glm, newdata = test, type = "prob")
 pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.2071429, "Yes", "No")
-pred_kaggle_class2 <- ifelse(pred_kaggle_prob$Yes > 0.205921, "Yes", "No")
 test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "xgboost2.csv", row.names = FALSE)
+write.csv(submission, "xgboost_tuniing2.csv", row.names = FALSE)
+  
