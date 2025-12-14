@@ -1,0 +1,213 @@
+---
+title: "xgboost mario 2"
+output: html_document
+date: "2025-12-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# ==============================================================================
+# 1. CARGA DE LIBRERÍAS Y PREPROCESAMIENTO INICIAL
+# ==============================================================================
+library(tidymodels)
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(xgboost) # Se carga con tidymodels, pero es bueno tenerlo explícito
+
+# Cargar datos (Asegúrate de que la ruta sea correcta)
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData") 
+bd <- data_reducida
+
+# --- Definición de la Receta de Preprocesamiento ---
+rec <- recipe(Exited ~ ., data = bd) %>%
+  step_dummy(all_nominal_predictors(), -group, one_hot = TRUE, keep_original_cols = FALSE) %>%
+  step_center(all_numeric_predictors()) %>%
+  step_scale(all_numeric_predictors())
+
+# Aplicar el preprocesamiento
+bd <- prep(rec) %>% bake(new_data = NULL)
+
+# Separación en bases de entrenamiento y validación/test
+trainbase <- bd[bd$group == "train", ]
+trainbase$group <- NULL
+# testbase (conjunto de prueba ciego final) se deja sin usar por ahora
+testbase <- bd[bd$group == "test", ]
+testbase$group <- NULL
+
+# Dividir TRAINBASE en TRAIN (70%) y TEST (30% para validación)
+set.seed(123)
+ind <- sample(1:nrow(trainbase), 0.7 * nrow(trainbase))
+train <- trainbase[ind, ]
+test <- trainbase[-ind, ]
+
+
+
+# ==============================================================================
+# 2. TUNING DE HIPERPARÁMETROS (Validación Cruzada en TRAIN)
+# ==============================================================================
+
+# --- Definición del Modelo ---
+xgb_spec <- boost_tree(
+  trees = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(), # Se tunea en escala log10
+  loss_reduction = tune(),
+  min_n = tune(),
+  sample_size = tune(),
+  mtry = tune()
+) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+# --- Definición de Workflow ---
+xgb_wf <- workflow() %>%
+  add_model(xgb_spec) %>%
+  add_formula(Exited ~ .)
+
+# --- Definición de Folds y Métricas (componentes faltantes) ---
+metricas <- metric_set(roc_auc, f_meas, recall, accuracy)
+set.seed(123)
+folds <- vfold_cv(train, v = 10) # 10-fold CV sobre el set de entrenamiento
+
+# --- Grilla de Búsqueda Aleatoria ---
+set.seed(123)
+xgb_grid <- grid_random(
+  trees(range = c(300, 1200)),
+  tree_depth(range = c(3, 10)),
+  learn_rate(range = c(-3, -0.5)), 
+  loss_reduction(range = c(0, 10)),
+  min_n(range = c(5, 30)),
+  sample_prop(range = c(0.6, 1)),
+  mtry(range = c(5, ncol(train) - 1)),
+  size = 30
+)
+
+# --- Ejecutar Tuning ---
+xgb_tuned <- tune_grid(
+  xgb_wf,
+  resamples = folds,
+  grid = xgb_grid,
+  metrics = metricas
+)
+
+# Seleccionar los mejores parámetros según F1 (f_meas)
+best_comb <- select_best(xgb_tuned, metric = "f_meas")
+print("Mejores Hiperparámetros según F1 (f_meas):")
+print(best_comb)
+
+
+# ==============================================================================
+# 3. AJUSTE FINAL DEL MODELO Y PREDICCIONES
+# ==============================================================================
+
+# --- Finalizar Workflow y Entrenar ---
+xgb_final_wf <- xgb_wf %>% 
+  finalize_workflow(best_comb)
+
+# Entrenar el modelo final en todo el set de 'train' (70%)
+xgb_final_fit <- fit(xgb_final_wf, data = train)
+
+# --- Predicciones de Probabilidad en TRAIN y TEST ---
+pred_train_prob <- predict(xgb_final_fit, train, type = "prob") %>%
+  bind_cols(train %>% select(Exited))
+pred_test_prob <- predict(xgb_final_fit, test, type = "prob") %>%
+  bind_cols(test %>% select(Exited))
+
+
+# ==============================================================================
+# 4. OPTIMIZACIÓN DEL UMBRAL DE CLASIFICACIÓN (Usando el set TEST)
+# ==============================================================================
+
+# --- Definición de la función F1 y Evaluación de Umbrales ---
+f1_score <- function(cm) {
+  2 * cm$byClass["Sensitivity"] * cm$byClass["Precision"] /
+    (cm$byClass["Sensitivity"] + cm$byClass["Precision"])
+}
+
+evaluate_threshold <- function(data, threshold) {
+  # Recalcula la clase predicha con el nuevo umbral
+  pred_class_new <- factor(
+    # La probabilidad de la clase positiva es en .pred_1
+    ifelse(data$.pred_1 >= threshold, "1", "0"), 
+    levels = c("0", "1")
+  )
+  cm <- confusionMatrix(pred_class_new, data$Exited)
+  f1 <- f1_score(cm) # Usa la función f1_score definida arriba
+  
+  return(data.frame(
+    Umbral = threshold,
+    F1_Score = f1,
+    Sensitivity = cm$byClass["Sensitivity"],
+    Specificity = cm$byClass["Specificity"]
+  ))
+}
+
+# Iterar y encontrar el umbral óptimo F1 en el set TEST
+thresholds_to_test <- seq(from = 0.05, to = 0.95, by = 0.01)
+
+# Usamos pred_test_prob para encontrar el umbral óptimo
+results_thresholds <- bind_rows(
+  lapply(thresholds_to_test, function(t) {
+    evaluate_threshold(pred_test_prob, t)
+  })
+)
+
+# Encontrar el umbral que maximiza F1
+best_f1_threshold_value <- results_thresholds[which.max(results_thresholds$F1_Score),]$Umbral
+
+print(paste("Umbral Óptimo (max F1) encontrado en el set TEST:", best_f1_threshold_value))
+
+
+# ==============================================================================
+# 5. EVALUACIÓN FINAL CON EL UMBRAL ÓPTIMO (en TRAIN y TEST)
+# ==============================================================================
+
+# 5.1 Clasificación con el Umbral Optimizado en TRAIN
+pred_train_class_optim <- factor(
+  ifelse(pred_train_prob$.pred_1 >= best_f1_threshold_value, "1", "0"),
+  levels = c("0", "1")
+)
+cm_train <- confusionMatrix(pred_train_class_optim, train$Exited)
+
+# 5.2 Clasificación con el Umbral Optimizado en TEST
+pred_test_class_optim <- factor(
+  ifelse(pred_test_prob$.pred_1 >= best_f1_threshold_value, "1", "0"),
+  levels = c("0", "1")
+)
+cm_test <- confusionMatrix(pred_test_class_optim, test$Exited)
+
+# --- Creación de la Tabla de Métricas Resumen ---
+results_final <- data.frame(
+  Métrica = c("F1-Score", "Sensitivity (Exhaustividad)", "Precision", "Specificity", "Accuracy"),
+  Train_Set = c(
+    round(f1_score(cm_train), 4),
+    round(cm_train$byClass["Sensitivity"], 4),
+    round(cm_train$byClass["Precision"], 4),
+    round(cm_train$byClass["Specificity"], 4),
+    round(cm_train$overall["Accuracy"], 4)
+  ),
+  Test_Set = c(
+    round(f1_score(cm_test), 4),
+    round(cm_test$byClass["Sensitivity"], 4),
+    round(cm_test$byClass["Precision"], 4),
+    round(cm_test$byClass["Specificity"], 4),
+    round(cm_test$overall["Accuracy"], 4)
+  )
+)
+
+# Mostrar resultados finales
+cat("\n\n--- 📊 Evaluación Final del Mejor Modelo (Umbral Optimizado) ---\n")
+print(results_final)
+cat("\n----------------------------------------------------------------\n")
+cat("Matriz de Confusión en el Set de Entrenamiento (TRAIN):\n")
+print(cm_train)
+cat("\n----------------------------------------------------------------\n")
+cat("Matriz de Confusión en el Set de Test/Validación (TEST):\n")
+print(cm_test)
+```
+
