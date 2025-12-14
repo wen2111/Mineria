@@ -175,7 +175,7 @@ De los 5 itemsets más frecuentes únicamente se obtiene una información que im
 
 A continuación se comenzará a buscar reglas de asociación mediante itemsets de entre 2 y 5 items. 
 ```{r}
-rules = apriori (data_tr, parameter = list (support=0.0125, confidence=0.6, maxlen = 5, minlen=2))
+rules = apriori (data_tr, parameter = list (support=0.0125, confidence=0.5, maxlen = 5, minlen=2))
 summary(rules)
 ```
 

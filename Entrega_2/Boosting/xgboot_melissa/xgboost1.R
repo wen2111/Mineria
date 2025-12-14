@@ -42,7 +42,7 @@ train$Exited <- ifelse(train$Exited == "Yes" | train$Exited == "1", 1, 0)
 #####################################################
 ### 3. PARTICIÓN INTERNA (TRAIN2 / TEST2)
 #####################################################
-set.seed(123)
+set.seed(777)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ]
 test2  <- train[-index, ]
@@ -86,7 +86,7 @@ params <- list(
   scale_pos_weight = 4     # CLAVE: Compensar desbalanceo (aprox 80/20 ratio)
 )
 
-set.seed(123)
+set.seed(12345)
 # Cross Validation para encontrar el número óptimo de rondas
 cv_res <- xgb.cv(
   params = params,

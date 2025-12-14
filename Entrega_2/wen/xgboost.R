@@ -1,155 +1,159 @@
-########################################################################
-#xgboost
+#####################################################
+######## XGBOOTING REDUCIDA CON HASBALANCE ##########
+#############################################Melissa#
+
 library(caret)
-library(FactoMineR)  
-
+library(xgboost)
+library(Matrix)
+library(pROC)
+library(ggplot2)
+library(dplyr)
+library(scales)
+setwd("~/GitHub/Mineria/Entrega_2/Boosting/xgboot_melissa")
+load("data_reducida_con_ID.RData")
 mydata <- data_reducida
-mydata$group<-NULL
 
-#dummifico data reducido
-x<-mydata[,-3] #quito la respuesta
-x<-x[,1:4] # cojo solo las cat
-x <- fastDummies::dummy_cols(x, 
-                             remove_first_dummy = TRUE,  
-                             remove_selected_columns = TRUE)
-x<-cbind(x,mydata[,6:7]) # adjunto las numericas
-x$Exited<-mydata$Exited # añado la respuesta
-mydata<-x
-mydata$hasB<-ifelse(mydata$Balance==0,0,1)
-mydata$Balance<-NULL
-# SEPARAR TRAIN Y TEST
-train <- mydata[1:7000,]
-test <- mydata[7001:10000,]  # 3000 obs
+#####################################################
+# PREPARACIÓN
+#####################################################
+# Separar Train y Test (para Kaggle, Exited vacía)
+train <- subset(mydata, group == "train")
+test  <- subset(mydata, group == "test")
+
+# Guardar ID para submission y eliminar variables innecesarias para el modelo
+test_submission_id <- test$ID
+variables_eliminar <- c("group", "Surname", "ID")
+
+train <- train[, !names(train) %in% variables_eliminar]
+test  <- test[, !names(test) %in% c("group", "Surname", "ID")]
+
+#####################################################
+### FEATURE ENGINEERING
+#####################################################
+# Creamos HasBalance porque los que tienen saldo se van mas
+# XGBoost prefiere números: 1 si tiene saldo, 0 si no.
+train$HasBalance <- ifelse(train$Balance > 0, 1, 0)
+test$HasBalance  <- ifelse(test$Balance > 0, 1, 0)
 
 
-# LABELS PARA EXITED
-train$Exited <- factor(train$Exited,
-                       levels = c("0","1"),
-                       labels = c("No","Yes"))
+# Convertir la variable objetivo a numérica 0/1 para XGBoost
+# "Yes" o "1" es la clase positiva.
+train$Exited <- ifelse(train$Exited == "Yes" | train$Exited == "1", 1, 0)
 
-# PARTICION TRAIN2/TEST2
+#####################################################
+### 3. PARTICIÓN INTERNA (TRAIN2 / TEST2)
+#####################################################
+set.seed(123)
+index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
+train2 <- train[index, ]
+test2  <- train[-index, ]
+
+#####################################################
+### 4. TRANSFORMACIÓN NUMÉRICA (ONE-HOT ENCODING)
+#####################################################
+# XGBoost no acepta factores. Convertimos todo a matriz numérica.
+# Importante: Creamos el "molde" solo con los datos de entrenamiento (train2).
+
+# Separamos predictores de la variable objetivo
+predictors_train2 <- train2[, !names(train2) %in% "Exited"]
+predictors_test2  <- test2[, !names(test2) %in% "Exited"]
+predictors_kaggle <- test[, !names(test) %in% "Exited"] # El test de Kaggle no tiene Exited
+
+# Creamos el esquema de transformación
+dummy_obj <- dummyVars(~ ., data = predictors_train2, fullRank = FALSE)
+
+# Aplicamos el esquema a los 3 conjuntos de datos
+mat_train2  <- predict(dummy_obj, newdata = predictors_train2)
+mat_test2   <- predict(dummy_obj, newdata = predictors_test2)
+mat_kaggle  <- predict(dummy_obj, newdata = predictors_kaggle)
+
+# Convertimos a formato nativo de XGBoost (DMatrix)
+# test2 y train2 llevan etiqueta (label), kaggle no.
+dtrain2 <- xgb.DMatrix(data = mat_train2, label = train2$Exited)
+dtest2  <- xgb.DMatrix(data = mat_test2, label = test2$Exited)
+dkaggle <- xgb.DMatrix(data = mat_kaggle)
+
+#####################################################
+### 5. ENTRENAMIENTO XGBOOST CON CV
+#####################################################
+# Configuración para subir el F1 (Atención a scale_pos_weight)
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "auc",
+  eta = 0.05,              # Aprendizaje lento para evitar overfitting
+  max_depth = 4,           # Árboles no muy profundos
+  subsample = 0.7,
+  colsample_bytree = 0.7,
+  scale_pos_weight = 4     # CLAVE: Compensar desbalanceo (aprox 80/20 ratio)
+)
 
 set.seed(123)
-
-index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
-train2 <- train[index, ] # train interno
-test2  <- train[-index, ] # test interno
-
-library(MLmetrics)
-
-f1_recall_summary <- function(data, lev = NULL, model = NULL) {
-  precision <- Precision(y_true = data$obs, y_pred = data$pred, positive = "Yes")
-  recall <- Recall(y_true = data$obs, y_pred = data$pred, positive = "Yes")
-  f1 <- F1_Score(y_true = data$obs, y_pred = data$pred, positive = "Yes")
-  c(F1 = f1, Recall = recall, Precision = precision)
-}
-
-ctrl_boot_auc <- trainControl(method = "cv", 
-                              number = 5 ,         
-                              classProbs = TRUE,
-                              summaryFunction = f1_recall_summary
-                              #,search = "grid"
+# Cross Validation para encontrar el número óptimo de rondas
+cv_res <- xgb.cv(
+  params = params,
+  data = dtrain2,
+  nrounds = 1000,
+  nfold = 5,
+  stratified = TRUE,       # CLAVE: Evita el error de "dataset empty"
+  early_stopping_rounds = 50,
+  print_every_n = 50,
+  maximize = TRUE
 )
 
-xgb_grid <- expand.grid(
-  nrounds = c(150,300),
-  max_depth = c(2,3,5),
-  eta = c(0.1,0.4,0.6),
-  gamma = c(3,5,6) ,             
-  colsample_bytree = 0.8,
-  min_child_weight = 1,
-  subsample = 0.5
+# Entrenar modelo final con la mejor iteración encontrada
+modelo_xgb <- xgb.train(
+  params = params,
+  data = dtrain2,
+  nrounds = cv_res$best_iteration
 )
 
-fit_tuning <- train(
-  Exited ~ ., 
-  data = train2,
-  method = "xgbTree",
-  metric = "F1",
-  trControl = ctrl_boot_auc,
-  tuneGrid = xgb_grid,  
-  preProcess = "scale",
-  verbosity = 0
-)
+#####################################################
+### 6. EVALUACIÓN Y UMBRAL ÓPTIMO (TEST2)
+#####################################################
+# Predecimos probabilidades sobre la validación interna
+probs_test2 <- predict(modelo_xgb, dtest2)
 
-fit_tuning$bestTune
-# Predicciones probabilísticas
-train_pred_prob <- predict(fit_tuning, newdata = train2, type = "prob")
-test_pred_prob  <- predict(fit_tuning, newdata = test2,  type = "prob")
+# Curva ROC para buscar el mejor punto de corte
+roc_obj <- roc(test2$Exited, probs_test2)
 
-train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
-test_pred_cut  <- ifelse(test_pred_prob$Yes > 0.2071429, "Yes", "No")
-# Pasamos a clase: yes/no
-train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
-test_pred_cut  <- factor(test_pred_cut,  levels = c("No","Yes"))
+# Buscamos el umbral que maximiza la suma de Sensibilidad y Especificidad
+coords_optimas <- coords(roc_obj, "best", 
+                         ret = c("threshold", "sensitivity", "specificity"), 
+                         best.method = "closest.topleft")
+umbral_optimo <- coords_optimas$threshold
 
-# Matrices de confusión
-conf_train <- confusionMatrix(train_pred_cut, train2$Exited,positive = "Yes")
-conf_test  <- confusionMatrix(test_pred_cut, test2$Exited,positive = "Yes")
+cat("El umbral optimizado es:", umbral_optimo, "\n")
 
-# F1-score function
-f1_score <- function(cm){
-  precision <- cm$byClass["Precision"]
-  recall    <- cm$byClass["Sensitivity"]
-  f1 <- 2 * (precision * recall) / (precision + recall)
-  return(as.numeric(f1))
-}
+################## GRAFICO ROC ########################
+plot(roc_obj, print.auc = TRUE, print.thres = "best", col="blue", main="ROC Curve (Validation)")
 
+#####################################################
+### 7. CÁLCULO DE KPIS (TRAIN2 VS TEST2)
+#####################################################
+# Obtenemos predicciones también para train2 para ver si hay overfitting
+probs_train2 <- predict(modelo_xgb, dtrain2)
+# Convertimos probabilidad a clase usando el umbral optimizado
+pred_class_train2 <- ifelse(probs_train2 > umbral_optimo, 1, 0)
+pred_class_test2  <- ifelse(probs_test2 > umbral_optimo, 1, 0)
 
-f1_train <- f1_score(conf_train)
-f1_test  <- f1_score(conf_test)
+# Convertimos a Factor para caret (asegurando niveles 0 y 1)
+f_pred_train2 <- factor(pred_class_train2, levels = c(0, 1))
+f_pred_test2  <- factor(pred_class_test2, levels = c(0, 1))
+f_real_train2 <- factor(train2$Exited, levels = c(0, 1))
+f_real_test2  <- factor(test2$Exited, levels = c(0, 1))
 
+# Matrices de Confusión
+cm_train <- confusionMatrix(f_pred_train2, f_real_train2, positive = "1", mode = "prec_recall")
+cm_test  <- confusionMatrix(f_pred_test2, f_real_test2, positive = "1", mode = "prec_recall")
 
-kpis <- data.frame(
+# Tabla Resumen
+resultados <- data.frame(
   Dataset = c("Train2", "Test2"),
-  Error_rate = c(1 - conf_train$overall["Accuracy"],
-                 1 - conf_test$overall["Accuracy"]),
-  Accuracy = c(conf_train$overall["Accuracy"],
-               conf_test$overall["Accuracy"]),
-  Precision = c(conf_train$byClass["Pos Pred Value"],
-                conf_test$byClass["Pos Pred Value"]),
-  Recall_Sensitivity = c(conf_train$byClass["Sensitivity"],
-                         conf_test$byClass["Sensitivity"]),
-  Specificity = c(conf_train$byClass["Specificity"],
-                  conf_test$byClass["Specificity"]),
-  F1_Score = c(f1_train, f1_test)
+  Accuracy = c(cm_train$overall["Accuracy"], cm_test$overall["Accuracy"]),
+  Precision = c(cm_train$byClass["Precision"], cm_test$byClass["Precision"]),
+  Recall = c(cm_train$byClass["Sensitivity"], cm_test$byClass["Sensitivity"]),
+  F1_Score = c(cm_train$byClass["F1"], cm_test$byClass["F1"])
 )
 
-kpis
+print(resultados)
 
-#final train
-fit_tuning$bestTune
-xgb_grid_no_tuning <- expand.grid(
-  nrounds = 150,
-  max_depth = 3,
-  eta = 0.1,
-  gamma = 3,              
-  colsample_bytree = 0.8,
-  min_child_weight = 1,
-  subsample = 0.5
-)
-set.seed(459)
-fit_final_glm <- train(Exited ~ ., data=train, 
-                       method = "xgbTree",
-                       trControl = ctrl_boot_auc, metric = "F1",
-                       preProcess = c("scale"),verbosity = 0,
-                       tuneGrid=xgb_grid_no_tuning
-                       
-)
-train_pred_prob <- predict(fit_final_glm, newdata = train, type = "prob")
-train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
-# Pasamos a clase: yes/no
-train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
-
-# Matrices de confusión
-conf_train <- confusionMatrix(train_pred_cut, train$Exited,positive = "Yes")
-conf_train
-f1_score(conf_train)
-
-# prediccion
-pred_kaggle_prob <- predict(fit_final_glm, newdata = test, type = "prob")
-pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.2071429, "Yes", "No")
-test$ID<-data$ID[7001:10000]
-submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "xgboost_tuniing2.csv", row.names = FALSE)
-  
