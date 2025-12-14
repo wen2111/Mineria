@@ -7,7 +7,7 @@ load("data_reducida_con_ID.RData")
 
 mydata <- data_reducida
 
-################## PREPARACION #################################################
+################## PREPARACION ########################
 train <- subset(mydata, group == "train") 
 test  <- subset(mydata, group == "test") 
 
@@ -17,7 +17,7 @@ test_submission_id <- test$ID
 test <- test[, !names(test) %in% variables_eliminar]
 train$Exited <- factor(train$Exited, levels = c("0","1"), labels = c("No","Yes"))
 
-################### FEAT. ENGINEERING ##########################################
+################### FEAT. ENGINEERING ####################
 
 # variable dummy HasBalance
 train$HasBalance <- factor(ifelse(train$Balance > 0, "Yes", "No"), 
@@ -116,7 +116,7 @@ print(resultados_rf)
 
 
 
-# 测试不同阈值对RF的影响
+# diferentes umbrales
 thresholds <- seq(0.1, 0.5, by = 0.05)
 results <- data.frame()
 
