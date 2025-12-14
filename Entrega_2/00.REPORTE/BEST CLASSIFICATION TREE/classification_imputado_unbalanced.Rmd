@@ -1,0 +1,411 @@
+---
+title: "Classification Tree bbdd imputado_bsd"
+author: "Grupo 5"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+geometry: "left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm"
+header-includes:
+  - \usepackage{tocloft}
+  - \renewcommand{\contentsname}{\hfill\LARGE\textbf{ÍNDICE}\hfill}
+  - \renewcommand{\cftaftertoctitle}{\hfill}
+  - \addtocontents{toc}{\protect\thispagestyle{empty}}
+  - \addtocontents{toc}{\protect\setcounter{tocdepth}{3}}
+  - \renewcommand{\cftsecafterpnum}{\vspace{8pt}}
+  - \renewcommand{\cftsubsecafterpnum}{\vspace{5pt}}
+  - \renewcommand{\cftsubsubsecafterpnum}{\vspace{3pt}}
+  - \renewcommand{\cftdotsep}{1.5}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+load("~/GitHub/Mineria/DATA/dataaaaaaaaaaaaaa.RData")
+library(rpart)
+library(caret)
+library(rpart.plot)
+library(ROSE)
+library(dplyr)
+```
+
+# Base de datos transformada SIN BALANCEAR
+```{r}
+data_transformada <- data_transformada %>%
+  mutate(across(where(is.numeric), ~ as.numeric(scale(.x))))
+data4tree<-data_transformada[0:7000,]
+datatest<-data_transformada[7001:10000,]
+ind <- sample(1:nrow(data4tree), 0.7*nrow(data4tree))
+train <- data4tree[ind,]
+test <- data4tree[-ind,]
+```
+
+## Método cp=0
+
+```{r}
+tree <- rpart(Exited ~ ., data = train, cp = 0)
+printcp(tree)
+plotcp(tree)
+```
+
+Mirando el gráfico, el mínimo se encuentra aproximadamente en la región donde Lambda es alrededor de 0.0032 - 0.0019, Número de variables = 34 - 64, Error relativo = 0.95
+
+El punto más bajo parece estar alrededor de lambda = 0.0032 con aproximadamente 34-51 variables en el modelo.
+
+### Elección cp óptimo
+
+```{r}
+xerror <- tree$cptable[,"xerror"]
+xerror
+imin.xerror <- which.min(xerror)
+imin.xerror
+tree$cptable[imin.xerror, ]
+upper.xerror <- xerror[imin.xerror] + tree$cptable[imin.xerror, "xstd"]
+upper.xerror
+```
+Los valores son bastante similados para el caso de la base de datos
+*balanceado plus*  El mínimo error es 0.923 en la posición 6, que corresponde a un árbol con 14 divisiones y un CP = 0.005429418
+
+#### Cp mínimo
+
+```{r}
+tree2 <- prune(tree, cp = 0.005429418)
+importance <- tree2$variable.importance
+importance <- round(100*importance/sum(importance), 1)
+importance
+```
+Los resultados muestran que NumOfProducts (39.7%) y Age (39.4%) son las variables dominantes, explicando conjuntamente el 79.1% de la capacidad predictiva del modelo para identificar clientes que abandonarán el banco. 
+Esto indica que el número de productos contratados y la edad del cliente son los factores más determinantes en la decisión de abandono. Las siguientes variables en importancia, IsActiveMember (4%) y Balance 11.7%), tienen un impacto considerablemente menor, mientras que factores como Tenure (0.4%) resultan prácticamente irrelevantes para el modelo. 
+
+Matriz de confusión para train
+```{r, echo=FALSE}
+p <- predict(tree2, train, type = 'prob')
+pclass<-c()
+for(i in 1:nrow(train)){
+pclass[i]<-ifelse(p[i,2]>=0.2071429,1,0)
+}
+pclass<-as.factor(pclass)
+(conf_train<-confusionMatrix(pclass, train$Exited, positive="1"))
+```
+Matriz de confusión para test
+```{r, echo=FALSE}
+p <- predict(tree2, test, type = 'prob')
+pclass2<-c()
+for(i in 1:nrow(p)){
+pclass2[i]<-ifelse(p[i,2]>=0.2071429,1,0)
+}
+pclass2<-as.factor(pclass2)
+(conf_test<-confusionMatrix(pclass2, test$Exited, positive="1"))
+```
+
+F1 score
+```{r, echo=FALSE}
+ f1_score <- function(cm){
+ precision <- cm$byClass["Precision"]
+ recall <- cm$byClass["Sensitivity"]
+ f1 <- 2 * (precision * recall) / (precision + recall)
+ return(as.numeric(f1))
+ }
+ cat("f1 datos train", f1_train <- f1_score(conf_train))
+ cat("f1 datos test", f1_score(conf_test))
+```
+Los resultados no son satisfactorios:
+- Valores pobres para F1score y recall
+- Hay indicios de ligero overfitting: el F1 en train es claramente mayor que en test por minima diferencia, aunque la diferencia no es grande.
+
+#### Cp mínimo+ error estándar
+
+```{r}
+icp <- which(tree$cptable[, "xerror"] <= upper.xerror)[1]
+cp_optimo_1se <- tree$cptable[icp, "CP"]
+tree3 <- prune(tree, cp = cp_optimo_1se)
+importance <- tree3$variable.importance
+importance <- round(100*importance/sum(importance), 1)
+importance
+```
+El peso de las variables ha augmentado en algunos casos. 
+
+Matriz de confusión para train
+```{r, echo=FALSE}
+p <- predict(tree3, train, type = 'prob')
+pclass<-c()
+for(i in 1:nrow(train)){
+pclass[i]<-ifelse(p[i,2]>=0.2071429,1,0)
+}
+pclass<-as.factor(pclass)
+(conf_train<-confusionMatrix(pclass, train$Exited, positive="1"))
+```
+
+Matriz de confusión para test
+```{r, echo=FALSE}
+p <- predict(tree3, test, type = 'prob')
+pclass2<-c()
+for(i in 1:nrow(p)){
+pclass2[i]<-ifelse(p[i,2]>=0.2071429,1,0)
+}
+pclass2<-as.factor(pclass2)
+(conf_test<-confusionMatrix(pclass2, test$Exited, positive="1"))
+```
+
+F1 score
+```{r, echo=FALSE}
+ cat("f1 datos train", f1_train <- f1_score(conf_train))
+ cat("f1 datos test", f1_score(conf_test))
+```
+No hay overfitting, el f1 ha disminuido para este caso, no obstante los dos valores se podrian considerar parecidos
+
+## Método Caret
+
+```{r}
+caret.rpart <- train(Exited ~ ., method = "rpart", data = train,
+ tuneLength = 20,
+ trControl = trainControl(method = "cv", number = 10))
+ggplot(caret.rpart)
+rpart.plot(caret.rpart$finalModel)
+```
+El árbol muestra que la edad y el número de productos son los factores clave: los clientes más jóvenes (<42) casi siempre permanecen, mientras que los pocos casos con muchos productos y alta actividad o mayores con >=3 productos tienen mayor probabilidad de marcharse.
+
+Importancia de las variables:
+```{r, echo=FALSE}
+var.imp <- varImp(caret.rpart)
+plot(var.imp)
+```
+Las predicciones:
+
+Matriz de confusión datos train
+```{r, echo=FALSE}
+pred <- predict(caret.rpart, newdata = test, type="prob")
+pclass2<-c()
+for(i in 1:nrow(p)){
+pclass2[i]<-ifelse(p[i,2]>=0.2071429,1,0)
+}
+pclass2<-as.factor(pclass2)
+(conf_test<-confusionMatrix(pclass2, test$Exited, positive="1"))
+```
+Matriz de confusión datos test:
+```{r, echo=FALSE}
+pred <- predict(caret.rpart, newdata = test)
+(conf_train<-confusionMatrix(pred, test$Exited, positive="1"))
+```
+
+Los F1score:
+```{r, echo=FALSE}
+ cat("f1 datos train", f1_train <- f1_score(conf_train))
+ cat("f1 datos test", f1_score(conf_test))
+```
+- Valores muy pobres de F1 y recall
+- Indicios de overfitting
+
+## Conclusiones para data imputado sin balancear
+
+Con los datos imputados, los resultados siguen siendo claramente mejorables: ni el tuning con caret ni ajustar el Cp óptimo aportan mejoras sustanciales. Esto indica que el problema no está en el modelo sino en la estructura del conjunto imputado, por lo que balancear las clases es el siguiente paso adecuado para intentar mejorar el rendimiento.
+
+# Base de datos transformada BALANCEO 
+
+A continuación se buscará para diferentes niveles de balanceo dónde se obtienen mejores kpi con caret
+
+```{r, echo=FALSE,warning=FALSE}
+library(ROSE)
+library(caret)
+library(dplyr)
+library(ggplot2)
+
+set.seed(1271)
+
+f1_score <- function(conf_matrix) {
+  precision <- conf_matrix$byClass["Pos Pred Value"]
+  recall <- conf_matrix$byClass["Sensitivity"]
+  2 * (precision * recall) / (precision + recall)
+}
+
+resultados <- data.frame()
+
+for(p in seq(0.05, 0.50, by = 0.01)) {
+
+  k <- 10
+  n_tune <- 10
+
+  seeds <- vector(mode = "list", length = k + 1)
+  for(i in 1:k) seeds[[i]] <- sample.int(1000, n_tune)
+  seeds[[k + 1]] <- sample.int(1000, 1)
+
+  data_balanced <- ROSE(Exited ~ ., data = train, p = p, seed = 123)$data
+
+  model <- train(
+    Exited ~ .,
+    data = data_balanced,
+    method = "rpart",
+    tuneLength = n_tune,
+    trControl = trainControl(
+      method = "cv",
+      number = k,
+      seeds = seeds
+    )
+  )
+
+  best_cp <- model$bestTune$cp
+
+  pred_train_prob <- predict(model, train, type = "prob")[, 2]
+  pred_test_prob  <- predict(model, test,  type = "prob")[, 2]
+
+  pclass_train <- factor(ifelse(pred_train_prob >= p, 1, 0))
+  pclass_test  <- factor(ifelse(pred_test_prob  >= p, 1, 0))
+
+  cm_train <- confusionMatrix(pclass_train, train$Exited, positive = "1")
+  cm_test  <- confusionMatrix(pclass_test,  test$Exited,  positive = "1")
+
+  nueva_fila <- data.frame(
+    p = p,
+    cp = best_cp,
+    F1_Train = f1_score(cm_train),
+    F1_Test  = f1_score(cm_test),
+    Sensitivity_Train = cm_train$byClass["Sensitivity"],
+    Sensitivity_Test  = cm_test$byClass["Sensitivity"],
+    Specificity_Train = cm_train$byClass["Specificity"],
+    Specificity_Test  = cm_test$byClass["Specificity"],
+    Accuracy_Train = cm_train$overall["Accuracy"],
+    Accuracy_Test  = cm_test$overall["Accuracy"]
+  )
+
+  resultados <- rbind(resultados, nueva_fila)
+}
+print(resultados)
+
+best_row <- resultados[which.max(resultados$F1_Test), ]
+ggplot(resultados, aes(x = p, y = F1_Test)) +
+  geom_line(color = "blue", size = 1.2) +
+  geom_point(color = "red", size = 2) +
+
+  geom_point(
+    data = best_row,
+    aes(x = p, y = F1_Test),
+    color = "darkgreen",
+    size = 4
+  ) +
+ 
+  geom_text(
+    data = best_row,
+    aes(
+      x = p,
+      y = F1_Test,
+      label = paste0("Max F1 = ", round(F1_Test, 3), "\n p = ", p)
+    ),
+    vjust = -1,
+    color = "darkgreen"
+  ) +
+  
+  labs(
+    title = "F1-Score en Test vs p (ROSE)",
+    x = "p (proporción clase positiva en ROSE)",
+    y = "F1-Score Test"
+  ) +
+  theme_minimal()
+best_model <- resultados %>% 
+  arrange(desc(F1_Test)) %>% 
+  slice(1)
+
+print(best_model)
+```
+
+## Características del mejor árbol
+
+```{r}
+library(ROSE)
+library(caret)
+library(dplyr)
+
+
+best_row <- resultados[which.max(resultados$F1_Test), ]
+best_p  <- best_row$p
+best_cp <- best_row$cp
+
+data_best <- ROSE(Exited ~ ., data = train, p = best_p, seed = 123)$data
+
+best_model <- train(
+  Exited ~ .,
+  data = data_best,
+  method = "rpart",
+  tuneGrid = data.frame(cp = best_cp),
+  trControl = trainControl(method = "none")
+)
+
+tree  <- best_model$finalModel
+frame <- tree$frame
+
+n_nodes        <- nrow(frame)
+n_leaves       <- sum(frame$var == "<leaf>")
+max_depth      <- max(frame$depth)
+min_leaf_size  <- min(frame$n[frame$var == "<leaf>"])
+root <- frame[1, ]
+
+p0_root <- root$yval2[4]
+p1_root <- root$yval2[5] 
+
+gini_root <- 1 - (p0_root^2 + p1_root^2)
+gini_root
+
+
+gini_nodes <- sapply(1:nrow(frame), function(i) {
+  p0 <- frame$yval2[i, 4]
+  p1 <- frame$yval2[i, 5]
+  1 - (p0^2 + p1^2)
+})
+
+gini_weighted <- sum(frame$n * gini_nodes) / sum(frame$n)
+gini_weighted
+
+gini_reduction <- tree$variable.importance
+
+
+tabla_arbol <- data.frame(
+  Medida = c(
+    "Número total de nodos",
+    "Número de hojas",
+    "Profundidad máxima",
+    "Tamaño mínimo de hoja",
+    "Gini del nodo raíz",
+    "Gini medio ponderado del árbol"
+  ),
+  Valor = c(
+    n_nodes,
+    n_leaves,
+    max_depth,
+    min_leaf_size,
+    round(gini_root, 3),
+    round(gini_weighted, 3)
+  )
+)
+
+print(tabla_arbol)
+
+
+tabla_gini_vars <- data.frame(
+  Variable = names(gini_reduction),
+  Reduccion_Gini = as.numeric(gini_reduction)
+) %>%
+  arrange(desc(Reduccion_Gini))
+
+print(tabla_gini_vars)
+
+```
+
+## Visualizamos el mejor árbol
+
+```{r}
+library(rpart.plot)
+
+rpart.plot(tree,
+           type = 3,        # cajas completas con bordes
+           extra = 106,     # muestra clase, probabilidades y nº de observaciones
+           fallen.leaves = TRUE,
+           cex = 0.7,       # tamaño del texto
+           main = "Árbol de decisión final")
+```
+
+
+
+
+
