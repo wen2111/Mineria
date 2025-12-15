@@ -11,7 +11,8 @@ library(ggplot2)
 library(dplyr)
 library(scales)
 
-load("~/GitHub/Mineria/Entrega_2/Boosting/xgboot_melissa/data_reducida_con_ID.RData")
+
+load("data_reducida_con_ID.RData")
 mydata <- data_reducida
 
 #####################################################
@@ -55,14 +56,8 @@ params <- list(
 #####################################################
 
 semillas <- 101:1000
-
 f1_train <- numeric(length(semillas))
 f1_test  <- numeric(length(semillas))
-
-### NUEVO
-recall_train <- numeric(length(semillas))
-recall_test  <- numeric(length(semillas))
-threshold_opt <- numeric(length(semillas))
 
 for (i in seq_along(semillas)) {
   
@@ -120,7 +115,7 @@ for (i in seq_along(semillas)) {
   probs_test2  <- predict(modelo_xgb, dtest2)
   
   #####################################################
-  ### UMBRAL ÓPTIMO
+  ### UMBRAL ÓPTIMO (TU MÉTODO, SIN CAMBIOS)
   #####################################################
   
   roc_obj <- roc(test2$Exited, probs_test2, quiet = TRUE)
@@ -131,10 +126,7 @@ for (i in seq_along(semillas)) {
     best.method = "closest.topleft"
   )
   
-  umbral_optimo <- coords_optimas$threshold[1]
-  
-  ### NUEVO
-  threshold_opt[i] <- umbral_optimo
+  umbral_optimo <- coords_optimas$threshold[1]  # FIX técnico, NO metodológico
   
   #####################################################
   ### CLASIFICACIÓN
@@ -163,39 +155,65 @@ for (i in seq_along(semillas)) {
   )
   
   #####################################################
-  ### GUARDAR MÉTRICAS
+  ### GUARDAR F1
   #####################################################
   
   f1_train[i] <- cm_train$byClass["F1"]
   f1_test[i]  <- cm_test$byClass["F1"]
   
-  ### NUEVO
-  recall_train[i] <- cm_train$byClass["Recall"]
-  recall_test[i]  <- cm_test$byClass["Recall"]
-  
   cat("Semilla:", semillas[i],
       "| F1 Train:", round(f1_train[i], 4),
-      "| F1 Test:", round(f1_test[i], 4),
-      "| Recall Test:", round(recall_test[i], 4),
-      "| Threshold:", round(umbral_optimo, 4), "\n")
+      "| F1 Test:", round(f1_test[i], 4), "\n")
 }
 
 #####################################################
-### DATA FRAME FINAL PARA EL INFORME
+### VISUALIZACIÓN
 #####################################################
+
+# Líneas
+plot(semillas, f1_train, type = "b", pch = 19,
+     ylim = range(c(f1_train, f1_test)),
+     xlab = "Semilla", ylab = "F1-score",
+     main = "F1 en Train2 y Test2 según la semilla")
+
+lines(semillas, f1_test, type = "b", pch = 17, lty = 2)
+
+legend("bottomright",
+       legend = c("Train2", "Test2"),
+       pch = c(19, 17),
+       lty = c(1, 2))
+
+# Boxplot
+boxplot(
+  list(Train2 = f1_train, Test2 = f1_test),
+  ylab = "F1-score",
+  main = "Distribución del F1 en Train2 vs Test2"
+)
+# Índices de los máximos
+idx_train_max <- which.max(f1_train)
+idx_test_max  <- which.max(f1_test)
+
+# Índices máximos
+idx_f1_train_max <- which.max(f1_train)
+idx_f1_test_max  <- which.max(f1_test)
+
+cat(
+  "\nResumen máximo entre semillas", min(semillas), "y", max(semillas), ":\n\n",
+  
+  "F1_train máximo: semilla", semillas[idx_f1_train_max],
+  "con F1_train =", round(f1_train[idx_f1_train_max], 4),
+  "y F1_test =", round(f1_test[idx_f1_train_max], 4), "\n",
+  
+  "F1_test máximo: semilla", semillas[idx_f1_test_max],
+  "con F1_test =", round(f1_test[idx_f1_test_max], 4),
+  "y F1_train =", round(f1_train[idx_f1_test_max], 4), "\n"
+)
 
 df <- data.frame(
   semilla = semillas,
   F1_train = f1_train,
-  F1_test  = f1_test,
-  Recall_train = recall_train,
-  Recall_test  = recall_test,
-  Threshold_optimo = threshold_opt
+  F1_test  = f1_test
 )
 
-#####################################################
-### TOP 30 POR F1_test
-#####################################################
-
-ranking_final <- df[order(-df$F1_test), ][1:30, ]
-ranking_final
+# Ordenado por F1_test
+df[order(-df$F1_test), ][1:20, ]
