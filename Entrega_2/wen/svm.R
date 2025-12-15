@@ -2,7 +2,7 @@ library(e1071)
 library(mlbench)
 library(ggplot2)
 library(ISLR)
-
+###########################################3
 mydata <- data_transformada
 vars <- c(
   "Age",
@@ -20,7 +20,6 @@ vars <- c(
   "IsActiveMember",
   "Exited"
 )
-mydata$group<-NULL
 mydata<-mydata[,vars]
 #################################################3
 library(fastDummies)
@@ -37,7 +36,18 @@ df_dummy <- dummy_cols(
 )
 
 mydata<-df_dummy
-######################################
+#####################################################
+mydata<-data_reducida
+#dummifico data reducido
+x<-mydata[,-3] #quito la respuesta
+x<-x[,1:4] # cojo solo las cat
+x <- fastDummies::dummy_cols(x, 
+                             remove_first_dummy = TRUE,  
+                             remove_selected_columns = TRUE)
+x<-cbind(x,mydata[,6:7]) # adjunto las numericas
+x$Exited<-mydata$Exited # añado la respuesta
+mydata<-x
+
 mydata$hasB<-ifelse(mydata$Balance==0,0,1)
 mydata$Balance<-NULL
 
@@ -51,9 +61,7 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes"))
 
 # PARTICION TRAIN2/TEST2
-
-set.seed(738)
-
+set.seed(666)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
@@ -84,8 +92,8 @@ best_t
 max(f1s)
 ####################
 
-train_pred_cut <- ifelse(train_values > 0.2071429, "Yes", "No")
-test_pred_cut  <- ifelse(test_values > 0.2071429, "Yes", "No")
+train_pred_cut <- ifelse(train_values > best_t, "Yes", "No")
+test_pred_cut  <- ifelse(test_values > best_t, "Yes", "No")
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
 test_pred_cut  <- factor(test_pred_cut,  levels = c("No","Yes"))
@@ -123,6 +131,20 @@ kpis <- data.frame(
 )
 
 kpis
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ######################################## final
 
