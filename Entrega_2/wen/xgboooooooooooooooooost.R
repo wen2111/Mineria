@@ -32,7 +32,7 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes"))
 
 # PARTICION TRAIN2/TEST2
-set.seed(123)
+set.seed(4826)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
@@ -63,6 +63,18 @@ xgb_grid <- expand.grid(
   subsample = c(0.7,0.8)
 )
 
+# para replicar el best seed
+
+xgb_grid <- expand.grid(
+  nrounds = 150 ,
+  max_depth = 2 ,
+  eta = 0.4,
+  gamma = 3,             
+  colsample_bytree = 0.8,
+  min_child_weight = 1,
+  subsample = 0.7
+)
+
 fit_tuning <- train(
   Exited ~ ., 
   data = train2,
@@ -81,8 +93,28 @@ fit_tuning$bestTune
 train_pred_prob <- predict(fit_tuning, newdata = train2, type = "prob")
 test_pred_prob  <- predict(fit_tuning, newdata = test2,  type = "prob")
 
-train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
-test_pred_cut  <- ifelse(test_pred_prob$Yes > 0.2071429, "Yes", "No")
+f1_score <- function(y_true, y_pred) {
+  tp <- sum(y_true == "Yes" & y_pred == "Yes")
+  fp <- sum(y_true == "No"  & y_pred == "Yes")
+  fn <- sum(y_true == "Yes" & y_pred == "No")
+  
+  precision <- tp / (tp + fp)
+  recall    <- tp / (tp + fn)
+  
+  2 * precision * recall / (precision + recall)
+}
+
+thresholds <- seq(0.01, 0.99, by = 0.01)
+
+f1_values <- sapply(thresholds, function(t) {
+  pred <- ifelse(train_pred_prob$Yes > t, "Yes", "No")
+  f1_score(train2$Exited, pred)
+})
+
+(best_threshold <- thresholds[which.max(f1_values)])
+#0.2071429
+train_pred_cut <- ifelse(train_pred_prob$Yes > best_threshold, "Yes", "No")
+test_pred_cut  <- ifelse(test_pred_prob$Yes > best_threshold, "Yes", "No")
 
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
