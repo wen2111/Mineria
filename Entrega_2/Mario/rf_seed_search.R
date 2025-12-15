@@ -7,7 +7,27 @@ library(pROC)
 
 load("~/GitHub/Mineria/Entrega_2/glm/glm_melissa/data_reducida_con_ID.RData")
 
-mydata <- data_reducida
+#mydata <- data_reducida
+
+mydata <- data_transformada
+vars <- c(
+  "Age",
+  "EstimatedSalary",
+  "AvgTransactionAmount",
+  "CreditScore",
+  "DigitalEngagementScore",
+  "Balance",
+  "NumOfProducts_grupo",
+  "TransactionFrequency",
+  "Tenure",
+  "NetPromoterScore",
+  "Geography",
+  "Gender",
+  "IsActiveMember",
+  "Exited"
+  ,"group"
+)
+mydata<-mydata[,vars]
 
 ################## PREPARACION ######################
 train <- subset(mydata, group == "train") 
@@ -98,5 +118,6 @@ for (s in 1:100) {
 }
 
 # Top 15 semillas por F1 test
+
 top15_rf <- results_rf %>% arrange(desc(f1_test)) %>% slice(1:15)
 top15_rf

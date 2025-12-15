@@ -11,6 +11,7 @@ library(ggplot2)
 library(dplyr)
 library(scales)
 
+
 load("data_reducida_con_ID.RData")
 mydata <- data_reducida
 
