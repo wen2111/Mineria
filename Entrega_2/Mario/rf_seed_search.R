@@ -7,27 +7,7 @@ library(pROC)
 
 load("~/GitHub/Mineria/Entrega_2/glm/glm_melissa/data_reducida_con_ID.RData")
 
-#mydata <- data_reducida
-
-mydata <- data_transformada
-vars <- c(
-  "Age",
-  "EstimatedSalary",
-  "AvgTransactionAmount",
-  "CreditScore",
-  "DigitalEngagementScore",
-  "Balance",
-  "NumOfProducts_grupo",
-  "TransactionFrequency",
-  "Tenure",
-  "NetPromoterScore",
-  "Geography",
-  "Gender",
-  "IsActiveMember",
-  "Exited"
-  ,"group"
-)
-mydata<-mydata[,vars]
+mydata <- data_reducida
 
 ################## PREPARACION ######################
 train <- subset(mydata, group == "train") 
