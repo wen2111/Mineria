@@ -35,6 +35,8 @@ test  <- test[, !names(test) %in% variables_eliminar]
 
 train$HasBalance <- ifelse(train$Balance > 0, 1, 0)
 test$HasBalance  <- ifelse(test$Balance > 0, 1, 0)
+train$Balance <- ifelse(train$Balance > 0, 1, 0)
+test$Balance  <- ifelse(test$Balance > 0, 1, 0)
 
 train$Exited <- ifelse(train$Exited == "Yes" | train$Exited == "1", 1, 0)
 ```
@@ -54,7 +56,7 @@ params <- list(
 # BUCLE SEEDS
 
 ```{r}
-semillas <- 1001:2000
+semillas <- 1001:1500
 
 f1_train <- numeric(length(semillas))
 f1_test  <- numeric(length(semillas))

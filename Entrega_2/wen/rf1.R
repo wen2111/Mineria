@@ -18,12 +18,13 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes")) 
 # PARTICION TRAIN2/TEST2
 
-set.seed(272)
+set.seed(689)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
 
 mtry.class <- sqrt(ncol(train2) - 1)
+tuneGrid <- data.frame(mtry = 5)
 tuneGrid <- data.frame(mtry = floor(c(mtry.class/2, mtry.class, 2*mtry.class)))
 rf.caret <- train(Exited ~ ., data = train2,method = "rf",
                   tuneGrid = tuneGrid,nodesize=25,maxnodes=50)
@@ -48,8 +49,8 @@ plot.roc(r1,print.auc=TRUE,
 ptest <- predict(rf.caret, test2, type = 'prob')
 ptrain <- predict(rf.caret, train2, type = 'prob')
 # Probabilidades de la clase positiva
-probs <- ptest[, "Yes"]   # cambia "1" si tu clase positiva tiene otro nombre
-y_true <- test2$Exited      # variable real (ajusta el nombre)
+probs <- ptest[, "Yes"]   
+y_true <- test2$Exited    
 f1_score <- function(y_true, y_pred, positive = "Yes") {
   tp <- sum(y_true == positive & y_pred == positive)
   fp <- sum(y_true != positive & y_pred == positive)
@@ -80,10 +81,10 @@ for (p in ps) {
 best_p
 best_f1
 
-ptrain <- ifelse(ptrain[,2] > best_p, "Yes", "No")
+ptrain <- ifelse(ptrain[,2] > 0.06, "Yes", "No")
 ptrain <- factor(ptrain, levels = c("No", "Yes"))
 
-ptest <- ifelse(ptest[,2] > best_p, "Yes", "No")
+ptest <- ifelse(ptest[,2] > 0.06, "Yes", "No")
 ptest <- factor(ptest, levels = c("No", "Yes"))
 
 conf_train<-confusionMatrix(ptrain, train2$Exited, positive="Yes")

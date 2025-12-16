@@ -34,7 +34,8 @@ test  <- test[, !names(test) %in% c("group", "Surname", "ID")]
 # XGBoost prefiere números: 1 si tiene saldo, 0 si no.
 train$HasBalance <- ifelse(train$Balance > 0, 1, 0)
 test$HasBalance  <- ifelse(test$Balance > 0, 1, 0)
-
+train$Balance<-NULL
+test$Balance<-NULL
 # Convertir la variable objetivo a numérica 0/1 para XGBoost
 # "Yes" o "1" es la clase positiva.
 train$Exited <- ifelse(train$Exited == "Yes" | train$Exited == "1", 1, 0)
@@ -42,7 +43,7 @@ train$Exited <- ifelse(train$Exited == "Yes" | train$Exited == "1", 1, 0)
 #####################################################
 ### 3. PARTICIÓN INTERNA (TRAIN2 / TEST2)
 #####################################################
-set.seed(777)
+set.seed(689)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ]
 test2  <- train[-index, ]
@@ -86,7 +87,7 @@ params <- list(
   scale_pos_weight = 4     # CLAVE: Compensar desbalanceo (aprox 80/20 ratio)
 )
 
-set.seed(12345)
+set.seed(689)
 # Cross Validation para encontrar el número óptimo de rondas
 cv_res <- xgb.cv(
   params = params,
@@ -129,6 +130,7 @@ plot(roc_obj, print.auc = TRUE, print.thres = "best", col="blue", main="ROC Curv
 #####################################################
 ### 7. CÁLCULO DE KPIS (TRAIN2 VS TEST2)
 #####################################################
+umbral_optimo<-0.47
 # Obtenemos predicciones también para train2 para ver si hay overfitting
 probs_train2 <- predict(modelo_xgb, dtrain2)
 # Convertimos probabilidad a clase usando el umbral optimizado

@@ -6,17 +6,10 @@
 library(caret)
 
 mydata <- data_reducida
-#dummifico
-x<-mydata[,-3] #quito la respuesta
-x<-x[,1:4] # cojo solo las cat
-x <- fastDummies::dummy_cols(x, 
-                             remove_first_dummy = TRUE,  
-                             remove_selected_columns = TRUE)
-x<-cbind(x,mydata[,6:7]) # adjunto las numericas
-x$Exited<-mydata$Exited # añado la respuesta
-mydata<-x
+mydata$group<-NULL
 mydata$hasB<-ifelse(mydata$Balance==0,0,1)
 mydata$Balance<-NULL
+mydata$Age2<-(mydata$Age)^2
 
 # SEPARAR TRAIN Y TEST
 train <- mydata[1:7000,]
@@ -41,10 +34,15 @@ ctrl_boot_auc <- trainControl(method = "cv",
                               classProbs = TRUE,
                               summaryFunction = twoClassSummary)
 
-fit_boot_auc <- train(Exited ~ ., data=train2, 
+fit_boot_auc <- train(Exited ~ Geography * Gender +
+                        IsActiveMember +
+                        NumOfProducts_grupo +
+                        Age+
+                        Age2 +
+                        hasB, data=train2, 
                       method = "glm", family = binomial(link = "probit"),
-                      trControl = ctrl_boot_auc, metric = "ROC",
-                      preProcess = c("scale")
+                      trControl = ctrl_boot_auc, metric = "ROC"
+                      #,preProcess = c("scale") no afecta
                       )
 
 auc_boot <- fit_boot_auc$results$ROC
@@ -72,7 +70,7 @@ f1_values <- sapply(thresholds, function(th){
 })
 
 best_th <- thresholds[which.max(f1_values)]
-best_th
+best_th<-0.2071429
 
 # si prob > threshold → Yes
 train_pred_cut <- ifelse(train_pred_prob$Yes > best_th, "Yes", "No")

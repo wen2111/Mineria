@@ -61,13 +61,15 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes"))
 
 # PARTICION TRAIN2/TEST2
-set.seed(666)
+set.seed(689)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
 
 svm.model <- svm(Exited ~ ., data = train2, cost = 10, kernel="radial", 
-                 gamma = 0.02,scale = TRUE,,probability=TRUE,class.weights = c("No"=1, "Yes"=3))
+                 gamma = 0.02,scale = TRUE,,probability=TRUE
+                 ,class.weights = c("No"=1, "Yes"=3)
+                 )
 
 train_pred_prob <- predict(svm.model, newdata = train2, probability = TRUE)
 test_pred_prob  <- predict(svm.model, newdata = test2,  probability = TRUE)
@@ -88,7 +90,7 @@ f1s <- sapply(thresholds, function(t){
 })
 
 best_t <- thresholds[which.max(f1s)]
-best_t
+best_t<-0.2071429
 max(f1s)
 ####################
 
