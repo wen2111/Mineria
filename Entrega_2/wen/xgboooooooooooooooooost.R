@@ -32,7 +32,7 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes"))
 
 # PARTICION TRAIN2/TEST2
-set.seed(4826)
+set.seed(471)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
@@ -154,14 +154,14 @@ kpis
 fit_tuning$bestTune
 xgb_grid_no_tuning <- expand.grid(
   nrounds = 150,
-  max_depth = 3,
-  eta = 0.1,
+  max_depth = 2,
+  eta = 0.4,
   gamma = 3,              
   colsample_bytree = 0.8,
   min_child_weight = 1,
-  subsample = 0.5
+  subsample = 0.7
 )
-set.seed(459)
+set.seed(471)
 fit_final_glm <- train(Exited ~ ., data=train, 
                        method = "xgbTree",
                        trControl = ctrl_boot_auc, metric = "F1",
@@ -170,7 +170,7 @@ fit_final_glm <- train(Exited ~ ., data=train,
                        
 )
 train_pred_prob <- predict(fit_final_glm, newdata = train, type = "prob")
-train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
+train_pred_cut <- ifelse(train_pred_prob$Yes > 0.26, "Yes", "No")
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
 
@@ -181,9 +181,9 @@ f1_score(conf_train)
 
 # prediccion
 pred_kaggle_prob <- predict(fit_final_glm, newdata = test, type = "prob")
-pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.2071429, "Yes", "No")
+pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.26, "Yes", "No")
 test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "xgboost_tuniing2.csv", row.names = FALSE)
+write.csv(submission, "xgboost_0.26.csv", row.names = FALSE)
                     
                     
