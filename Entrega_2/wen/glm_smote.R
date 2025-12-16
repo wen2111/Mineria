@@ -29,7 +29,7 @@ train$Exited <- factor(train$Exited,
 
 # PARTICION TRAIN2/TEST2
 
-#set.seed(123)
+set.seed(666)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
@@ -42,7 +42,7 @@ ctrl_boot_auc <- trainControl(method = "cv",
                               summaryFunction = twoClassSummary)
 
 fit_boot_auc <- train(Exited ~ ., data=train2, 
-                      method = "glm", family = binomial(link = "logit"),
+                      method = "glm", family = binomial(link = "probit"),
                       trControl = ctrl_boot_auc, metric = "ROC",
                       preProcess = c("scale")
                       )
@@ -115,7 +115,7 @@ kpis <- data.frame(
 kpis
 
 #final train
-set.seed(123)
+set.seed(666)
 fit_final_glm <- train(
   Exited ~ ., data = train,
   method = "glm", family = binomial(link = "cloglog"),
