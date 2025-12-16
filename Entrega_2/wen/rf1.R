@@ -18,12 +18,13 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes")) 
 # PARTICION TRAIN2/TEST2
 
-set.seed(272)
+set.seed(417)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
 
 mtry.class <- sqrt(ncol(train2) - 1)
+tuneGrid <- data.frame(mtry = 5)
 tuneGrid <- data.frame(mtry = floor(c(mtry.class/2, mtry.class, 2*mtry.class)))
 rf.caret <- train(Exited ~ ., data = train2,method = "rf",
                   tuneGrid = tuneGrid,nodesize=25,maxnodes=50)
