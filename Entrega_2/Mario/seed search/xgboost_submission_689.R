@@ -125,36 +125,78 @@ cat("El umbral optimizado es:", umbral_optimo, "\n")
 
 ################## GRAFICO ROC ########################
 plot(roc_obj, print.auc = TRUE, print.thres = "best", col="blue", main="ROC Curve (Validation)")
+umbral_optimo<-0.47
 
 #####################################################
-### 7. CÁLCULO DE KPIS (TRAIN2 VS TEST2)
+### 7. CÁLCULO DE KPIs (TRAIN2 VS TEST2)
 #####################################################
-# Obtenemos predicciones también para train2 para ver si hay overfitting
+
+# Predicciones en TRAIN2
 probs_train2 <- predict(modelo_xgb, dtrain2)
-# Convertimos probabilidad a clase usando el umbral optimizado
 pred_class_train2 <- ifelse(probs_train2 > umbral_optimo, 1, 0)
-pred_class_test2  <- ifelse(probs_test2 > umbral_optimo, 1, 0)
 
-# Convertimos a Factor para caret (asegurando niveles 0 y 1)
+# Predicciones en TEST2 (ya tienes probs_test2)
+pred_class_test2 <- ifelse(probs_test2 > umbral_optimo, 1, 0)
+
+# Factores (niveles bien definidos)
 f_pred_train2 <- factor(pred_class_train2, levels = c(0, 1))
-f_pred_test2  <- factor(pred_class_test2, levels = c(0, 1))
+f_pred_test2  <- factor(pred_class_test2,  levels = c(0, 1))
 f_real_train2 <- factor(train2$Exited, levels = c(0, 1))
-f_real_test2  <- factor(test2$Exited, levels = c(0, 1))
+f_real_test2  <- factor(test2$Exited,  levels = c(0, 1))
 
-# Matrices de Confusión
-cm_train <- confusionMatrix(f_pred_train2, f_real_train2, positive = "1", mode = "prec_recall")
-cm_test  <- confusionMatrix(f_pred_test2, f_real_test2, positive = "1", mode = "prec_recall")
-
-# Tabla Resumen
-resultados <- data.frame(
-  Dataset = c("Train2", "Test2"),
-  Accuracy = c(cm_train$overall["Accuracy"], cm_test$overall["Accuracy"]),
-  Precision = c(cm_train$byClass["Precision"], cm_test$byClass["Precision"]),
-  Recall = c(cm_train$byClass["Sensitivity"], cm_test$byClass["Sensitivity"]),
-  F1_Score = c(cm_train$byClass["F1"], cm_test$byClass["F1"])
+# Matrices de confusión
+cm_train <- confusionMatrix(
+  data = f_pred_train2,
+  reference = f_real_train2,
+  positive = "1",
+  mode = "prec_recall"
 )
 
-print(resultados)
+cm_test <- confusionMatrix(
+  data = f_pred_test2,
+  reference = f_real_test2,
+  positive = "1",
+  mode = "prec_recall"
+)
+
+# Tabla resumen con TODAS las métricas
+resultados <- data.frame(
+  Dataset = c("Train2", "Test2"),
+  
+  Error_rate = c(
+    1 - cm_train$overall["Accuracy"],
+    1 - cm_test$overall["Accuracy"]
+  ),
+  
+  Accuracy = c(
+    cm_train$overall["Accuracy"],
+    cm_test$overall["Accuracy"]
+  ),
+  
+  Precision = c(
+    cm_train$byClass["Precision"],
+    cm_test$byClass["Precision"]
+  ),
+  
+  Recall_Sensitivity = c(
+    cm_train$byClass["Sensitivity"],
+    cm_test$byClass["Sensitivity"]
+  ),
+  
+  Specificity = c(
+    cm_train$byClass["Specificity"],
+    cm_test$byClass["Specificity"]
+  ),
+  
+  F1_Score = c(
+    cm_train$byClass["F1"],
+    cm_test$byClass["F1"]
+  )
+)
+
+# Mostrar resultados
+resultados
+
 
 #####################################################
 ### 8. GENERACIÓN SUBMIT KAGGLE (CORREGIDO A YES/NO)
