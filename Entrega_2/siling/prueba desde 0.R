@@ -14,14 +14,14 @@ df <- df[,-8]
 
 #### feat engineering #####
 
-df <- df %>%
-  mutate(Age = case_when(
-    Age >= 18 & Age <= 37 ~ "18-37",
-    Age >= 38 & Age <= 57 ~ "38-57",
-    Age >= 58 & Age <= 77 ~ "58-77",
-    Age >= 78 & Age <= 97 ~ "78-97",
-    TRUE ~ as.character(NA) 
-  ))
+# df <- df %>%
+#   mutate(Age = case_when(
+#     Age >= 18 & Age <= 37 ~ "18-37",
+#     Age >= 38 & Age <= 57 ~ "38-57",
+#     Age >= 58 & Age <= 77 ~ "58-77",
+#     Age >= 78 & Age <= 97 ~ "78-97",
+#     TRUE ~ as.character(NA) 
+#   ))
 
 # df$Age <- factor(df$Age, levels = c("18-37", "38-57", "58-77", "78-97"))
 ## as factor
