@@ -12,49 +12,244 @@ knitr::opts_chunk$set(echo = TRUE)
 library(caret)
 library(xgboost)
 library(Matrix)
-library(pROC)
-library(ggplot2)
 library(dplyr)
-library(scales)
+library(recipes)
 
 load("~/GitHub/Mineria/Entrega_2/Boosting/xgboot_melissa/data_reducida_con_ID.RData")
-mydata <- data_reducida
+mydata <- data_reducida[1:7000, ]
+```
+```{r}
+#FEATURE ENGINEERING
+mydata$IsOld   <- as.factor(ifelse(mydata$Age > 60, 1, 0))
+mydata$IsYoung <- as.factor(ifelse(mydata$Age < 33, 1, 0))
+mydata$Age<-as.numeric(mydata$Age)
+mydata$Age_Cat <- cut(mydata$Age, breaks = seq(18, 98, 20),
+                      include.lowest = TRUE, right = FALSE)
+mydata$HasBalance<-ifelse(mydata$Balance>0, 1, 0)
+mydata$ActiveWithBalance <- as.factor(as.integer(as.character(mydata$IsActiveMember)) *
+                                     mydata$HasBalance)
+mydata$ActiveOld         <- as.factor(as.integer(as.character(mydata$IsOld)) *
+                                     as.integer(as.character(mydata$IsActiveMember)))
+mydata$ActiveYoung       <- as.factor(as.integer(as.character(mydata$IsYoung)) *
+                                     as.integer(as.character(mydata$IsActiveMember)))
+mydata$HasBalance<-as.factor(mydata$HasBalance)
+mydata$ID  <- mydata$group <- NULL
 
+mydata$HasBalance<-as.factor(mydata$HasBalance)
+numeric_vars <- names(which(sapply(mydata, is.numeric)))
+numeric_vars <- setdiff(numeric_vars, "Exited")
+mydata[numeric_vars] <- scale(mydata[numeric_vars])
 ```
 
 ```{r}
-train <- subset(mydata, group == "train")
-test  <- subset(mydata, group == "test")
+###train test
+set.seed(689)
+index <- createDataPartition(mydata$Exited, p = 0.7, list = FALSE)
+train <- mydata[index, ]
+test  <- mydata[-index, ]
 
-test_submission_id <- test$ID
-variables_eliminar <- c("group", "Surname", "ID")
-
+variables_eliminar <- c("ID", "Surname", "group")
 train <- train[, !names(train) %in% variables_eliminar]
 test  <- test[, !names(test) %in% variables_eliminar]
 
-
-train$HasBalance <- ifelse(train$Balance > 0, 1, 0)
-test$HasBalance  <- ifelse(test$Balance > 0, 1, 0)
-
+# Convertir target a 0/1
 train$Exited <- ifelse(train$Exited == "Yes" | train$Exited == "1", 1, 0)
+test$Exited  <- ifelse(test$Exited == "Yes" | test$Exited == "1", 1, 0)
+```
+
+```{r}
+prepare_xgb_data <- function(df, target, rec = NULL) {
+  if (is.null(rec)) {
+    rec <- recipe(as.formula(paste(target, "~ .")), data = df) %>%
+      step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+      step_center(all_numeric_predictors()) %>%
+      step_scale(all_numeric_predictors()) %>%
+      prep(training = df)
+  }
+  X <- bake(rec, df) %>% select(-all_of(target)) %>% as.matrix()
+  
+  # Limpiar NA/Inf en features
+  X[!is.finite(X)] <- 0
+  
+  # Target 0/1
+  y <- as.integer(as.character(df[[target]]))
+  list(X = X, y = y, rec = rec)
+}
+```
+
+```{r}
+##GRIDSEARCH XGBOOST
+train_prepared <- prepare_xgb_data(train, "Exited")
+x_train <- train_prepared$X
+y_train <- train_prepared$y
+rec <- train_prepared$rec
+
+test_prepared <- prepare_xgb_data(test, "Exited", rec = rec)
+x_test <- test_prepared$X
+y_test <- test_prepared$y
+
+#========================
+# 6. Crear DMatrix
+#========================
+dtrain <- xgb.DMatrix(x_train, label = y_train)
+dtest  <- xgb.DMatrix(x_test,  label = y_test)
+
+cat("Datos preparados correctamente para XGBoost.\n")
+cat("Número de filas en train:", nrow(x_train), "\n")
+cat("Número de filas en test :", nrow(x_test), "\n")
+
+
+#========================
+# Función rápida F1
+#========================
+f1_score <- function(prob, y, th = 0.5) {
+  pred <- ifelse(prob > th, 1, 0)
+  TP <- sum(pred == 1 & y == 1)
+  FP <- sum(pred == 1 & y == 0)
+  FN <- sum(pred == 0 & y == 1)
+  if (TP == 0) return(0)
+  prec <- TP / (TP + FP)
+  rec  <- TP / (TP + FN)
+  2 * prec * rec / (prec + rec)
+}
+
+#========================
+# Hiperparámetros para grid
+#========================
+param_grid <- expand.grid(
+  max_depth = c(5,7),
+  eta = c(0.06,0.08),
+  subsample = c(0.7,0.9),
+  colsample_bytree = c(0.5,0.8),
+  min_child_weight = c(1,5),
+  gamma = c(0,0.5)
+)
+
+#========================
+# CV estratificada
+#========================
+set.seed(689)
+k_folds <- 5
+folds <- createFolds(y_train, k = k_folds)
+thresholds <- seq(0.10, 0.6, by = 0.01)
+
+best_f1 <- 0
+best_params <- NULL
+best_nrounds <- NULL
+best_thresh <- NULL
+
+cat("Iter | F1_CV | Th\n")
+cat("------------------\n")
+
+#========================
+# Grid search
+#========================
+for (i in 1:nrow(param_grid)) {
+  
+  params <- list(
+    objective = "binary:logistic",
+    eval_metric = "logloss",
+    max_depth = param_grid$max_depth[i],
+    eta = param_grid$eta[i],
+    subsample = param_grid$subsample[i],
+    colsample_bytree = param_grid$colsample_bytree[i],
+    min_child_weight = param_grid$min_child_weight[i],
+    gamma = param_grid$gamma[i],
+    scale_pos_weight = sum(y_train==0)/sum(y_train==1)
+  )
+  
+  # Determinar nrounds con CV interna
+  cv <- xgb.cv(
+    params = params,
+    data = dtrain,
+    nrounds = 300,
+    nfold = k_folds,
+    early_stopping_rounds = 20,
+    verbose = 0
+  )
+  nrounds_i <- cv$best_iteration
+  
+  # Calcular F1 en CV
+  f1_folds <- numeric(k_folds)
+  th_folds <- numeric(k_folds)
+  
+  for (k in seq_along(folds)) {
+    val_idx <- folds[[k]]
+    tr_idx  <- setdiff(seq_along(y_train), val_idx)
+    
+    dtr  <- xgb.DMatrix(x_train[tr_idx, ],  label = y_train[tr_idx])
+    dval <- xgb.DMatrix(x_train[val_idx, ], label = y_train[val_idx])
+    
+    model <- xgb.train(
+      params = params,
+      data = dtr,
+      nrounds = nrounds_i,
+      verbose = 0
+    )
+    
+    prob_val <- predict(model, dval)
+    f1s <- sapply(thresholds, function(th) f1_score(prob_val, y_train[val_idx], th))
+    f1_folds[k] <- max(f1s)
+    th_folds[k] <- thresholds[which.max(f1s)]
+  }
+  
+  f1_i <- mean(f1_folds)
+  th_i <- mean(th_folds)
+  
+  if (f1_i > best_f1) {
+    best_f1 <- f1_i
+    best_params <- params
+    best_nrounds <- nrounds_i
+    best_thresh <- th_i
+    cat(sprintf("%4d | %.4f | %.2f *\n", i, f1_i, th_i))
+  }
+}
+
+#========================
+# Entrenar modelo final
+#========================
+final_model <- xgb.train(
+  params = best_params,
+  data = dtrain,
+  nrounds = best_nrounds,
+  verbose = 0
+)
+
+prob_test <- predict(final_model, dtest)
+pred_test <- ifelse(prob_test > best_thresh, 1, 0)
+
+cm <- confusionMatrix(
+  factor(pred_test, levels=c(0,1)),
+  factor(y_test, levels=c(0,1)),
+  positive="1"
+)
+
+cat("\n=== RESULTADO FINAL ===\n")
+cat(sprintf("F1 Test: %.4f | Threshold: %.2f\n",
+            f1_score(prob_test, y_test, best_thresh),
+            best_thresh))
+print(cm)
+cat("\nMejores parámetros:\n")
+print(best_params)
 ```
 
 ```{r}
 params <- list(
   objective = "binary:logistic",
   eval_metric = "auc",
-  eta = 0.05,
-  max_depth = 4,
-  subsample = 0.7,
-  colsample_bytree = 0.7,
-  scale_pos_weight = 4
+  eta = 0.08,
+  max_depth = 5,
+  subsample = 0.8,
+  colsample_bytree = 0.6,
+  scale_pos_weight = 3.827586
 )
 ```
+
 
 # BUCLE SEEDS
 
 ```{r}
-semillas <- 101:1000
+semillas <- 1:1000
 
 f1_train <- numeric(length(semillas))
 f1_test  <- numeric(length(semillas))
@@ -153,6 +348,17 @@ for (i in seq_along(semillas)) {
       "| Recall Test:", round(recall_test[i], 4),
       "| Threshold:", round(umbral_optimo, 4), "\n")
 }
+df <- data.frame(
+  semilla = semillas,
+  F1_train = f1_train,
+  F1_test  = f1_test,
+  Recall_train = recall_train,
+  Recall_test  = recall_test,
+  Threshold_optimo = threshold_opt
+)
+
+ranking_final <- df[order(-df$F1_test), ][1:30, ]
+ranking_final
 
 ```
 
