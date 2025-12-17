@@ -59,13 +59,13 @@ ctrl_boot_auc <- trainControl(method = "cv",
 )
 
 xgb_grid <- expand.grid(
-  nrounds = 700,
-  max_depth = 5,
-  eta = 0.1,
-  gamma = 3 ,             
+  nrounds = 150 ,
+  max_depth = 2 ,
+  eta = 0.4,
+  gamma = 3,             
   colsample_bytree = 0.8,
   min_child_weight = 1,
-  subsample = 0.5
+  subsample = 0.7
 )
 
 fit_tuning <- train(
