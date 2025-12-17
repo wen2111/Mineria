@@ -1,3 +1,49 @@
+mydata <- data_transformada
+vars <- c(
+  "Age",
+  "EstimatedSalary", # super mal
+  "AvgTransactionAmount",
+  "CreditScore",
+  "DigitalEngagementScore",
+  "Balance",
+  "NumOfProducts_grupo",
+  "TransactionFrequency",
+  "Tenure",
+  "NetPromoterScore",
+  "Geography",
+  "Gender",
+  "IsActiveMember",
+  "Exited"
+)
+mydata<-mydata[,vars]
+#################################################3
+library(fastDummies)
+
+# columnas que quieres transformar
+cols_to_dummy <- names(mydata)[c(7, 11, 12)]
+
+# crear dummies
+df_dummy <- dummy_cols(
+  mydata,
+  select_columns = cols_to_dummy,       # columnas específicas
+  remove_first_dummy = TRUE,            # elimina la primera dummy (evita multicolinealidad)
+  remove_selected_columns = TRUE        # elimina las columnas originales
+)
+
+mydata<-df_dummy
+
+mydata$AgeC<-cut(mydata$Age,5)
+
+df_dummy <- dummy_cols(
+  mydata,
+  select_columns = "AgeC",       # columnas específicas
+  remove_first_dummy = TRUE,            # elimina la primera dummy (evita multicolinealidad)
+  remove_selected_columns = TRUE        # elimina las columnas originales
+)
+
+mydata<-df_dummy
+mydata$Age<-NULL
+
 #####################################################
 ######## XGBOOTING REDUCIDA CON HASBALANCE ##########
 
@@ -8,20 +54,38 @@ library(pROC)
 library(ggplot2)
 library(dplyr)
 library(scales)
-
+###############################33
 mydata <- data_reducida
+#library(dplyr)
+
+# Crear rangos personalizados
+mydata <- mydata %>%
+  mutate(
+    AgeC = cut(
+      Age,
+      breaks = c(0,40, 50, 60, 70, 100),
+      right = FALSE,
+      labels = c("0-40", "40-50", "50-60", "60-70", "70-100")
+    )
+  )
+
+mydata$Age<-NULL
+mydata$group<-NULL
+mydata$Tenure<-data_transformada$Tenure
 
 #dummifico data reducido
 x<-mydata[,-3] #quito la respuesta
-x<-x[,1:4] # cojo solo las cat
+x <- x[, c(1:4, 6)]
 x <- fastDummies::dummy_cols(x, 
                              remove_first_dummy = TRUE,  
                              remove_selected_columns = TRUE)
-x<-cbind(x,mydata[,6:7]) # adjunto las numericas
+#x$Balance<-mydata[,c(6,8)] # adjunto las numericas
+x<-cbind(x,mydata[,c(6,8)])
 x$Exited<-mydata$Exited # añado la respuesta
 mydata<-x
 mydata$hasB<-ifelse(mydata$Balance==0,0,1)
 mydata$Balance<-NULL
+###################################################################
 # SEPARAR TRAIN Y TEST
 train <- mydata[1:7000,]
 test <- mydata[7001:10000,]  # 3000 obs
@@ -32,7 +96,7 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes"))
 
 # PARTICION TRAIN2/TEST2
-set.seed(123)
+set.seed(666)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
@@ -54,13 +118,13 @@ ctrl_boot_auc <- trainControl(method = "cv",
 )
 
 xgb_grid <- expand.grid(
-  nrounds = 150,
-  max_depth = c(2,3,5),
-  eta = c(0.1,0.4),
-  gamma = c(3,5,6) ,             
-  colsample_bytree = c(0.8,0.7),
+  nrounds = 700,
+  max_depth = 5,
+  eta = 0.1,
+  gamma = 3 ,             
+  colsample_bytree = 0.8,
   min_child_weight = 1,
-  subsample = c(0.7,0.8)
+  subsample = 0.5
 )
 
 fit_tuning <- train(
@@ -71,18 +135,39 @@ fit_tuning <- train(
   trControl = ctrl_boot_auc,
   tuneGrid = xgb_grid,  
   preProcess = "scale",
-  verbosity = 0
+  verbosity = 0,
+  scale_pos_weight = 4
 )
 
-fit_tuning$bestTune
+#fit_tuning$bestTune
 
 
 # Predicciones probabilísticas
 train_pred_prob <- predict(fit_tuning, newdata = train2, type = "prob")
 test_pred_prob  <- predict(fit_tuning, newdata = test2,  type = "prob")
 
-train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
-test_pred_cut  <- ifelse(test_pred_prob$Yes > 0.2071429, "Yes", "No")
+f1_score <- function(y_true, y_pred) {
+  tp <- sum(y_true == "Yes" & y_pred == "Yes")
+  fp <- sum(y_true == "No"  & y_pred == "Yes")
+  fn <- sum(y_true == "Yes" & y_pred == "No")
+  
+  precision <- tp / (tp + fp)
+  recall    <- tp / (tp + fn)
+  
+  2 * precision * recall / (precision + recall)
+}
+
+thresholds <- seq(0.01, 0.99, by = 0.01)
+
+f1_values <- sapply(thresholds, function(t) {
+  pred <- ifelse(train_pred_prob$Yes > t, "Yes", "No")
+  f1_score(train2$Exited, pred)
+})
+
+(best_threshold <- thresholds[which.max(f1_values)])
+#0.2071429
+train_pred_cut <- ifelse(train_pred_prob$Yes > best_threshold, "Yes", "No")
+test_pred_cut  <- ifelse(test_pred_prob$Yes > best_threshold, "Yes", "No")
 
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
@@ -122,14 +207,14 @@ kpis
 fit_tuning$bestTune
 xgb_grid_no_tuning <- expand.grid(
   nrounds = 150,
-  max_depth = 3,
-  eta = 0.1,
+  max_depth = 2,
+  eta = 0.4,
   gamma = 3,              
   colsample_bytree = 0.8,
   min_child_weight = 1,
-  subsample = 0.5
+  subsample = 0.7
 )
-set.seed(459)
+set.seed(471)
 fit_final_glm <- train(Exited ~ ., data=train, 
                        method = "xgbTree",
                        trControl = ctrl_boot_auc, metric = "F1",
@@ -138,7 +223,7 @@ fit_final_glm <- train(Exited ~ ., data=train,
                        
 )
 train_pred_prob <- predict(fit_final_glm, newdata = train, type = "prob")
-train_pred_cut <- ifelse(train_pred_prob$Yes > 0.2071429, "Yes", "No")
+train_pred_cut <- ifelse(train_pred_prob$Yes > 0.26, "Yes", "No")
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
 
@@ -149,9 +234,9 @@ f1_score(conf_train)
 
 # prediccion
 pred_kaggle_prob <- predict(fit_final_glm, newdata = test, type = "prob")
-pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.2071429, "Yes", "No")
+pred_kaggle_class <- ifelse(pred_kaggle_prob$Yes > 0.26, "Yes", "No")
 test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
-write.csv(submission, "xgboost_tuniing2.csv", row.names = FALSE)
+write.csv(submission, "xgboost_0.26.csv", row.names = FALSE)
                     
                     

@@ -1,22 +1,22 @@
 library(caret)
 
-mejores_enlaces <- c("logit", "cloglog", "probit")
+mejores_enlaces <- c("logit", "cloglog", "probit","cauchy")
 resultados <- data.frame()
 
 for(enlace in mejores_enlaces) {
   cat("\n=== ENLACE:", enlace, "===\n")
   
   # 1. Entrenar modelo
-  model <- glm(Exited ~ ., data = train2, family = binomial(link = enlace))
+  model <- glm(Exited ~ ., data = train2, family = binomial(link = "logit"))
   
   # 2. Predecir en train2 y test2
   probs_train <- predict(model, train2, type = "response")
   probs_test <- predict(model, test2, type = "response")
   
   # 3. Encontrar mejor threshold en test2
-  thresholds <- seq(0.1, 0.9, 0.05)
+  thresholds <- seq(0.1, 0.9, 0.01)
   best_f1_test <- 0
-  best_threshold <- 0.5
+  best_threshold <- 0
   
   for(th in thresholds) {
     pred_test <- ifelse(probs_test > th, "Yes", "No")

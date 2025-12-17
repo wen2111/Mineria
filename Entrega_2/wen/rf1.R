@@ -6,19 +6,7 @@ library(printr)
 library(randomForest)
 library(ranger)
 
-mydata <- data_transformada
-#######3
-mydata$CustomerSegment<-NULL
-mydata$LoanStatus<-NULL
-mydata$IsActiveMember<-NULL
-mydata$Gender<-NULL
-mydata$ComplaintsCount<-NULL
-mydata$HasCrCard<-NULL
-mydata$SavingsAccountFlag<-NULL
-####
-mydata$group<-NULL
-mydata$Surname<-NULL
-mydata$ID<-NULL
+mydata<-data_reducida
 #########
 # SEPARAR TRAIN Y TEST
 train <- mydata[1:7000,]
@@ -30,25 +18,16 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes")) 
 # PARTICION TRAIN2/TEST2
 
-set.seed(123)
+set.seed(689)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
 
-############## 0
-
-rf <- randomForest(Exited ~ ., data = train2,)
-rf
-varImpPlot(rf)
-
-################### 1
-
 mtry.class <- sqrt(ncol(train2) - 1)
+tuneGrid <- data.frame(mtry = 5)
 tuneGrid <- data.frame(mtry = floor(c(mtry.class/2, mtry.class, 2*mtry.class)))
-tuneGrid
-set.seed(123)
 rf.caret <- train(Exited ~ ., data = train2,method = "rf",
-                  tuneGrid = tuneGrid,nodesize=15,maxnodes=25)
+                  tuneGrid = tuneGrid,nodesize=25,maxnodes=50)
 plot(rf.caret)
 rf.caret
 
@@ -69,11 +48,43 @@ plot.roc(r1,print.auc=TRUE,
 
 ptest <- predict(rf.caret, test2, type = 'prob')
 ptrain <- predict(rf.caret, train2, type = 'prob')
+# Probabilidades de la clase positiva
+probs <- ptest[, "Yes"]   
+y_true <- test2$Exited    
+f1_score <- function(y_true, y_pred, positive = "Yes") {
+  tp <- sum(y_true == positive & y_pred == positive)
+  fp <- sum(y_true != positive & y_pred == positive)
+  fn <- sum(y_true == positive & y_pred != positive)
+  
+  if ((2 * tp + fp + fn) == 0) {
+    return(0)
+  }
+  
+  2 * tp / (2 * tp + fp + fn)
+}
 
-ptrain <- ifelse(ptrain[,2] > 0.08696, "Yes", "No")
+ps <- seq(0.01, 0.99, by = 0.01)
+
+best_p <- 0
+best_f1 <- 0
+
+for (p in ps) {
+  y_pred <- ifelse(probs >= p, "Yes", "No")
+  f1 <- f1_score(y_true, y_pred)
+  
+  if (f1 > best_f1) {
+    best_f1 <- f1
+    best_p <- p
+  }
+}
+
+best_p
+best_f1
+
+ptrain <- ifelse(ptrain[,2] > 0.06, "Yes", "No")
 ptrain <- factor(ptrain, levels = c("No", "Yes"))
 
-ptest <- ifelse(ptest[,2] > 0.08696, "Yes", "No")
+ptest <- ifelse(ptest[,2] > 0.06, "Yes", "No")
 ptest <- factor(ptest, levels = c("No", "Yes"))
 
 conf_train<-confusionMatrix(ptrain, train2$Exited, positive="Yes")
@@ -131,7 +142,7 @@ test$ID<-data$ID[7001:10000]
 submission <- data.frame(ID = test$ID, Exited = pred_kaggle_class)
 write.csv(submission, "rf_imput.csv", row.names = FALSE)
 
-##################### 2
+#####################
 
 ctrl_rf <- trainControl(
   method = "cv",         # 5-fold cross-validation

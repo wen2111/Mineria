@@ -32,7 +32,7 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes"))
 
 # PARTICION TRAIN2/TEST2
-semillas <- sample(1:10000, 1000)
+semillas <- sample(1:1000, 100)
 f1_train <- numeric(length(semillas))
 f1_test  <- numeric(length(semillas))
 

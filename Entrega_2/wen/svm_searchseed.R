@@ -2,7 +2,7 @@ library(e1071)
 library(mlbench)
 library(ggplot2)
 library(ISLR)
-
+library(caret)
 mydata<-data_reducida
 #dummifico data reducido
 x<-mydata[,-3] #quito la respuesta
