@@ -18,16 +18,16 @@ table(data_reducida_plus$Exited)
 # Preparación de datos
 ```{r}
 # subset y preparacion
-train_imputado <- subset(data_imputado, group == "train") # 7000 obs
-test_imputado  <- subset(data_imputado,
-                         group == "test") # 3000 obs variable respuesta vacia
+train_reducida_plus <- subset(data_reducida_plus, group == "train") # 7000 obs
+test_reducida_plus  <- subset(data_reducida_plus,
+                         group == "test") 
 
 vars_drop <- c("ID", "Surname", "group")
-train_imputado <- train_imputado[, !(names(train_imputado) %in% vars_drop)]
-test_imputado  <- test_imputado[, !(names(test_imputado) %in% vars_drop)]
+train_reducida_plus <- train_reducida_plus[, !(names(train_reducida_plus) %in% vars_drop)]
+test_reducida_plus  <- test_reducida_plus[, !(names(test_reducida_plus) %in% vars_drop)]
 
 # levels para "exited"
-train_imputado$Exited <- factor(train_imputado$Exited,
+train_reducida_plus$Exited <- factor(train_reducida_plus$Exited,
                                 levels = c("1","0"),
                                 labels = c("Yes","No"))
 ```
@@ -60,11 +60,11 @@ tuneGrid <- expand.grid(
 # XGBoost model de clasificación
 xgb_fit <- train(
   Exited ~ .,              # Exited factor(Yes/No)
-  data      = train_imputado,
+  data      = train_reducida_plus,
   method    = "xgbTree",
   trControl = trControl,
   tuneGrid  = tuneGrid,
-  metric    = "ROC",  # ROC（twoClassSummary里自带）
+  metric    = "ROC",
   verbosity = 0
 )
 
@@ -80,11 +80,10 @@ library(caret)
 set.seed(1)
 trControl <- trainControl(method = "cv", number = 5)
 
-# 用 XGBoost 做分类
 caret.xgb <- train(
   Exited ~ .,
   method   = "xgbTree",
-  data     = train_imputado,
+  data     = train_reducida_plus,
   trControl = trControl,
   verbosity = 0
 )
@@ -105,7 +104,7 @@ tuneGrid <- expand.grid(
 caret.xgb <- train(
   Exited ~ .,
   method   = "xgbTree",
-  data     = train_imputado,
+  data     = train_reducida_plus,
   trControl = trControl,
   tuneGrid  = tuneGrid,
   verbosity = 0
@@ -115,6 +114,6 @@ caret.xgb$bestTune
 ```
 
 ```{r}
-pred_test <- predict(caret.xgb, newdata = test_imputado)
-confusionMatrix(pred_test, test_imputado$Exited)
+pred_test <- predict(caret.xgb, newdata = test_reducida_plus)
+confusionMatrix(pred_test, test_reducida_plus$Exited)
 ```

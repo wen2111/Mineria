@@ -63,9 +63,9 @@ mydata <- mydata %>%
   mutate(
     AgeC = cut(
       Age,
-      breaks = c(0,20,40, 60,80, 100),
+      breaks = c(0,20,40, 50, 60, 70,80, 100),
       right = FALSE,
-      labels = c("0-20","20-40" ,"40-60", "60-80","80-100")
+      labels = c("0-20","20-40" ,"40-50", "50-60", "60-70", "70-80","80-100")
     )
   )
 
@@ -95,7 +95,7 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes"))
 
 # PARTICION TRAIN2/TEST2
-set.seed(666)
+set.seed(687)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
