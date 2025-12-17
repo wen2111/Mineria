@@ -1,4 +1,4 @@
-# 简化调参版本
+# simple
 simple_grid <- expand.grid(
   nrounds = 100,
   max_depth = 4,
