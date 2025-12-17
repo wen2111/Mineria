@@ -63,15 +63,15 @@ mydata <- mydata %>%
   mutate(
     AgeC = cut(
       Age,
-      breaks = c(0,40, 50, 60, 70, 100),
+      breaks = c(0,20,40, 50, 60, 70,80, 100),
       right = FALSE,
-      labels = c("0-40", "40-50", "50-60", "60-70", "70-100")
+      labels = c("0-20","20-40" ,"40-50", "50-60", "60-70", "70-80","80-100")
     )
   )
 
 mydata$Age<-NULL
 mydata$group<-NULL
-mydata$Tenure<-data_transformada$Tenure
+#mydata$Tenure<-data_transformada$Tenure
 
 #dummifico data reducido
 x<-mydata[,-3] #quito la respuesta
@@ -79,8 +79,7 @@ x <- x[, c(1:4, 6)]
 x <- fastDummies::dummy_cols(x, 
                              remove_first_dummy = TRUE,  
                              remove_selected_columns = TRUE)
-#x$Balance<-mydata[,c(6,8)] # adjunto las numericas
-x<-cbind(x,mydata[,c(6,8)])
+x$Balance<-mydata[,6] # adjunto las numericas
 x$Exited<-mydata$Exited # añado la respuesta
 mydata<-x
 mydata$hasB<-ifelse(mydata$Balance==0,0,1)
@@ -96,7 +95,7 @@ train$Exited <- factor(train$Exited,
                        labels = c("No","Yes"))
 
 # PARTICION TRAIN2/TEST2
-set.seed(666)
+set.seed(687)
 index <- createDataPartition(train$Exited, p = 0.7, list = FALSE)
 train2 <- train[index, ] # train interno
 test2  <- train[-index, ] # test interno
@@ -168,6 +167,7 @@ f1_values <- sapply(thresholds, function(t) {
 #0.2071429
 train_pred_cut <- ifelse(train_pred_prob$Yes > best_threshold, "Yes", "No")
 test_pred_cut  <- ifelse(test_pred_prob$Yes > best_threshold, "Yes", "No")
+
 
 # Pasamos a clase: yes/no
 train_pred_cut <- factor(train_pred_cut, levels = c("No","Yes"))
