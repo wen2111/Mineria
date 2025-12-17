@@ -10,7 +10,7 @@ library(ggplot2)
 library(dplyr)
 library(scales)
 
-load("data_reducida_con_ID.RData")
+load("~/GitHub/Mineria/Entrega_2/Boosting/xgboot_melissa/data_reducida_con_ID.RData")
 mydata <- data_reducida
 set.seed(689)
 #####################################################
@@ -119,7 +119,7 @@ roc_obj <- roc(test2$Exited, probs_test2)
 coords_optimas <- coords(roc_obj, "best", 
                          ret = c("threshold", "sensitivity", "specificity"), 
                          best.method = "closest.topleft")
-umbral_optimo <- coords_optimas$threshold
+umbral_optimo <- 0.47
 
 cat("El umbral optimizado es:", umbral_optimo, "\n")
 
